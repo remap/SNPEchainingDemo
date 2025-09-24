@@ -6,7 +6,7 @@ It should follow this format:
 
 {
     "baseDir": "/sdcard/Android/data/com.example.snpechainingdemo/files/dlc", <-- replace by your app package name
-    "models": [ <-- can accommodate a list of models
+    "models": [ <-- can accommodate a list of models  
         {
             "name": "model1",
             "asset": "my_model_1_prepared.dlc",
