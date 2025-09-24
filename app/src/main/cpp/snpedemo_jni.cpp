@@ -16,6 +16,7 @@
 #include "hpp/ParseConfig.hpp"
 #include "hpp/MMapFile.h"
 #include "hpp/newInferenceHelper.hpp"
+#include "hpp/initTensorsHelper.h"
 
 #define LOG_TAG "SNPE_JNI"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -372,6 +373,14 @@ static jstring n_buildArbitrary(JNIEnv* env, jclass, jobject assetManager, jchar
                             reset_graph);
         k += 1;
     }
+    {
+        std::string semsg;
+        LOGI("Seeding input tensors...");
+        if (!seedRequiredInputs(cfg, *g_ws, mgr, &semsg)) {
+            return env->NewStringUTF(("Input seeding failed: " + semsg).c_str());
+        }
+    }
+
     return env->NewStringUTF(buildingLog.c_str());
 }
 

@@ -32,7 +32,8 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         # List C/C++ source files with relative paths to this CMakeLists.txt.
         inference.cpp inference_helper.cpp snpedemo_jni.cpp
         TensorWorkspace.cpp ModelSession.cpp GraphRunner.cpp
-        ParseConfig.cpp newInferenceHelper.cpp typical_usage_jni.cpp)
+        ParseConfig.cpp newInferenceHelper.cpp typical_usage_jni.cpp
+        initTensorsHelper.cpp)
 
 #add_library(${CMAKE_PROJECT_NAME} SHARED
 #        # List C/C++ source files with relative paths to this CMakeLists.txt.

@@ -12,8 +12,9 @@
 #include "MMapAsset.hpp"
 #include "hpp/ParseConfig.hpp"
 #include "hpp/MMapFile.h"
+#include "hpp/initTensorsHelper.h"
 
-#define LOG_TAG "SNPE_JNI_HELPER"
+#define LOG_TAG "NEW_INFERENCE_HELPER"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
@@ -53,7 +54,12 @@ static bool ensureWorkspaceBuffer(TensorWorkspace& ws,
     // If your TensorWorkspace doesn’t expose a 'has()' method,
     // add one; if it does, use it here.
     if (!ws.has(wsName)) {
-        ws.allocate(wsName, bytes);
+        void* p = ws.allocate(wsName, bytes);
+        if (!p) {
+            if (emsg) *emsg = "allocate('" + wsName + "') failed";
+            return false;
+        }
+        std::memset(p, 0, bytes); // zero on first alloc
     } else {
         // Validate size matches on reuse
         const size_t existing = ws.sizeOf(wsName);
@@ -306,6 +312,14 @@ std::string buildArbitraryChain(AAssetManager* mgr,
                             buildingLog,
                             reset_sessions);
     }
+
+    {
+        std::string semsg;
+        if (!seedRequiredInputs(cfg, ws, mgr, &semsg)) {
+            return "Input seeding failed: " + semsg;
+        }
+    }
+
     return buildingLog;
 }
 

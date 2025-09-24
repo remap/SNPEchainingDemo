@@ -19,7 +19,7 @@
 #include "hpp/MMapFile.h"
 #include "hpp/newInferenceHelper.hpp"
 
-#define LOG_TAG "SNPE_JNI"
+#define LOG_TAG "TYPICAL_USAGE_JNI"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
@@ -65,13 +65,13 @@ static const JNINativeMethod kMethods[] = {
 //        {"setModelDirectory", "(Ljava/lang/String;)V", (void*)n_setModelDirectory},
 };
 
-JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
-    JNIEnv* env = nullptr;
-    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) return JNI_ERR;
-
-    jclass cls = env->FindClass("com/example/snpechainingdemo/SNPEHelper");
-    if (!cls) return JNI_ERR;
-    if (env->RegisterNatives(cls, kMethods, sizeof(kMethods)/sizeof(kMethods[0])) < 0) return JNI_ERR;
-
-    return JNI_VERSION_1_6;
-}
+//JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
+//    JNIEnv* env = nullptr;
+//    if (vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) != JNI_OK) return JNI_ERR;
+//
+//    jclass cls = env->FindClass("com/example/snpechainingdemo/SNPEHelper");
+//    if (!cls) return JNI_ERR;
+//    if (env->RegisterNatives(cls, kMethods, sizeof(kMethods)/sizeof(kMethods[0])) < 0) return JNI_ERR;
+//
+//    return JNI_VERSION_1_6;
+//}

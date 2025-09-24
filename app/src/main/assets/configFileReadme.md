@@ -32,7 +32,12 @@ It should follow this format:
                 "model_output_tensor_name_1": "workspace_tensor_name_a",
                 "model_output_tensor_name_n": "workspace_tensor_name_b"
         }
-    ]
+    ],
+    "init": {
+        "sample": { "kind": "random", "mean": 0.0, "std": 1.0, "seed": 123 },
+        "temb":   { "kind": "file",   "path": "/sdcard/inputs/temb.bin" },
+        "encoder_hidden_states": { "kind": "asset", "path": "warmup/ehs.bin" }
+    }
 }
 
 Left hand side tensor names must match exactly what the model expects.
