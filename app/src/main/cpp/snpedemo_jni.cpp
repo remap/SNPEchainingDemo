@@ -366,8 +366,8 @@ static jstring n_buildArbitrary(JNIEnv* env, jclass, jobject assetManager, jchar
                             cfg,
                             mc,
                             runtimePref,
-                            g_ws,
-                            g_gr,
+                            *g_ws,
+                            *g_gr,
                             buildingLog,
                             reset_graph);
         k += 1;

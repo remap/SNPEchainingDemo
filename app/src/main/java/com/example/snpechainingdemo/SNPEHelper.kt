@@ -59,5 +59,11 @@ class SNPEHelper(private val app: Application)  {
         @JvmStatic
         external fun setModelDirectory(path: String)
 
+        @JvmStatic
+        external fun executeInference(
+            assetManager: android.content.res.AssetManager,
+            runtimePref: Char
+        ): String
+
     }
 }

@@ -23,18 +23,41 @@ static bool ensureWorkspaceBuffer(TensorWorkspace& ws,
 
 static inline int64_t msSince(std::chrono::steady_clock::time_point t0);
 
+//std::string buildModelAndGraph(AAssetManager* mgr,
+//                                std::string& g_modelDir,
+////                                const std::string& configJson,
+//                                const PipelineCfg& cfg,
+//                                const ModelCfg& mc,
+//                                const char defaultRuntimePref,
+//                                std::unique_ptr<TensorWorkspace>& outWs,
+//                                std::unique_ptr<GraphRunner>& outGraph,
+//                                std::string& log,
+//                                bool reset_session=false);
+
 std::string buildModelAndGraph(AAssetManager* mgr,
                                 std::string& g_modelDir,
 //                                const std::string& configJson,
                                 const PipelineCfg& cfg,
                                 const ModelCfg& mc,
                                 const char defaultRuntimePref,
-                                std::unique_ptr<TensorWorkspace>& outWs,
-                                std::unique_ptr<GraphRunner>& outGraph,
+                                TensorWorkspace& outWs,
+                                GraphRunner& outGraph,
                                 std::string& log,
                                 bool reset_session=false);
 
-std::string runGraph(GraphRunner& gr);
+std::string buildArbitraryChain(AAssetManager* mgr,
+                                std::string& g_modelDir,
+                                const std::string config_filename,
+                                TensorWorkspace& ws,
+                                GraphRunner& gr,
+                                const char defaultRuntimePref='D',
+                                bool reset_sessions=false);
+
+std::string rebuildNodeSession(GraphRunner::Node& node);
+std::string rebuildMultipleNodes(std::vector<GraphRunner::Node>& nodes);
+std::string rebuildAllGraphNodes(GraphRunner& gr);
+
+std::string runGraph(GraphRunner& gr, bool reset_sessions=false);
 
 //static bool readAssetToString(AAssetManager* mgr,
 //                              const char* filename,

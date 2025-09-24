@@ -79,8 +79,8 @@ std::string buildModelAndGraph(AAssetManager* mgr,
                                 const PipelineCfg& cfg,
                                 const ModelCfg& mc,
                                 const char defaultRuntimePref,
-                                std::unique_ptr<TensorWorkspace>& outWs,
-                                std::unique_ptr<GraphRunner>& outGraph,
+                                TensorWorkspace& outWs,
+                                GraphRunner& outGraph,
                                 std::string& log,
                                 bool reset_session) {
 
@@ -182,7 +182,8 @@ std::string buildModelAndGraph(AAssetManager* mgr,
         }
         // Inputs are bound from workspace too (so they can be fed by earlier models or app)
 //            if (!ensureWorkspaceBuffer(*ws, wsTensor, ti->bytes(), &emsg)) {
-        if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
+//        if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
+        if (!ensureWorkspaceBuffer(outWs, wsTensor, ti->bytes(), &emsg)) {
             return "Workspace alloc (input) failed for '" + mc.name + "': " + emsg;
         }
     }
@@ -196,7 +197,8 @@ std::string buildModelAndGraph(AAssetManager* mgr,
         if (!ti) {
             return "Model '" + mc.name + "': output tensor not found: " + modelTensor;
         }
-        if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
+//        if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
+        if (!ensureWorkspaceBuffer(outWs, wsTensor, ti->bytes(), &emsg)) {
             return "Workspace alloc (output) failed for '" + mc.name + "': " + emsg;
         }
     }
@@ -211,7 +213,7 @@ std::string buildModelAndGraph(AAssetManager* mgr,
     node.inputBinding  = mc.inputs;   // modelTensor -> workspaceTensor
     node.outputBinding = mc.outputs;  // modelTensor -> workspaceTensor
 
-    if (!outGraph->addNode(std::move(node), /*strictZeroCopy=*/true)) {
+    if (!outGraph.addNode(std::move(node), /*strictZeroCopy=*/true)) {
         return "addNode failed for '" + mc.name + "'";
     }
     totalGraphMs += msSince(tGraph0);
@@ -219,9 +221,9 @@ std::string buildModelAndGraph(AAssetManager* mgr,
 
     if (reset_session) {
 //        LOGI("[BUILDING] Resetting graph!");
-        LOGI("[BUILDING] Resetting session of last graph node %s!", outGraph->last().name.c_str());
+        LOGI("[BUILDING] Resetting session of last graph node %s!", outGraph.last().name.c_str());
 //        outGraph->clear();
-        outGraph->last().session.get()->reset();
+        outGraph.last().session.get()->reset();
     }
 //    }
 
@@ -237,9 +239,107 @@ std::string buildModelAndGraph(AAssetManager* mgr,
     return log;
 }
 
-std::string runGraph(GraphRunner& gr) {
+bool readAssetToString(AAssetManager* mgr,
+                       const char* filename,
+                       std::string& out,
+                       std::string* emsg) {
+    AAsset* a = AAssetManager_open(mgr, filename, AASSET_MODE_BUFFER);
+    if (!a) {
+        if (emsg) *emsg = std::string("Asset open failed: ") + filename;
+        return false;
+    }
+    size_t len = AAsset_getLength(a);
+    out.resize(len);
+    int r = AAsset_read(a, out.data(), len);
+    AAsset_close(a);
+    if (r != (int)len) {
+        if (emsg) *emsg = "Asset read truncated";
+        return false;
+    }
+    return true;
+}
+
+std::string buildArbitraryChain(AAssetManager* mgr,
+                                const std::string config_filename,
+                                std::string& g_modelDir,
+                                TensorWorkspace& ws,
+                                GraphRunner& gr,
+                                const char defaultRuntimePref='D',
+                                bool reset_sessions=false) {
+
+//    std::unique_ptr<TensorWorkspace> g_ws; // holds workspace tensors
+//    std::unique_ptr<GraphRunner> g_gr; // holds graph runner
+////    std::string g_modelDir; // holds the model directory path
+//
+//    g_ws.reset(new TensorWorkspace());
+//    g_gr.reset(new GraphRunner(*g_ws));
+
+    // read config file
+    std::string cfgText;
+    std::string emsg;
+    if (!readAssetToString(mgr, config_filename.c_str(), cfgText, &emsg)) {
+        return "Config read failed: " + emsg;
+    }
+    // parse config file
+    PipelineCfg cfg;
+    {
+        std::string emsg;
+        if (!ParseConfig(cfgText, cfg, &emsg)) {
+            return "Config parse failed: " + emsg;
+        }
+        if (cfg.models.empty()) {
+            return "Config has no models";
+        }
+    }
+
+    // create models, allocate buffers and build graph
+    std::string buildingLog;
+    for (const auto &mc: cfg.models)
+    {
+        buildingLog = buildModelAndGraph(mgr,
+                            g_modelDir,
+                            cfg,
+                            mc,
+                            defaultRuntimePref,
+                            ws,
+                            gr,
+                            buildingLog,
+                            reset_sessions);
+    }
+    return buildingLog;
+}
+
+std::string rebuildNodeSession(GraphRunner::Node& node) {
+
+    std::string rebuildingLog;
+    node.session.get()->reCreate(&rebuildingLog);
+
+    return rebuildingLog;
+}
+
+std::string rebuildMultipleNodes(std::vector<GraphRunner::Node>& nodes) {
+
+    std::string rebuildingLog;
+    for (auto& n: nodes) {
+        rebuildingLog = rebuildNodeSession(n);
+    }
+
+    return  rebuildingLog;
+}
+
+std::string rebuildAllGraphNodes(GraphRunner& gr) {
+
+    std::string rebuildingLog;
+    for (auto& n: gr.getNodes()) {
+        rebuildingLog = rebuildNodeSession(n);
+    }
+
+    return  rebuildingLog;
+}
+
+std::string runGraph(GraphRunner& gr, bool reset_sessions) {
     auto T0 = std::chrono::steady_clock::now();
-    auto infos = gr.runAll(/*reset_session*/ true);
+    auto infos = gr.runAll(reset_sessions);
     auto T1 = std::chrono::steady_clock::now();
     auto execMs = std::chrono::duration_cast<std::chrono::milliseconds>(T1 - T0).count();
     LOGI("Graph Execution time: %lld", execMs);
