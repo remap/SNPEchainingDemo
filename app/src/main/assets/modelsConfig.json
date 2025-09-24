@@ -1,0 +1,120 @@
+{
+  "baseDir": "/sdcard/Android/data/com.example.snpechainingdemo/files/dlc",
+  "models": [
+    {
+      "name": "downblock_1",
+      "asset": "unet_downblock1_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "sample": "sample",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states"
+      },
+      "outputs": {
+        "output_0": "db1_hidden",
+        "output_1": "db_res0",
+        "output_2": "db_res1",
+        "output_3": "db_res2",
+        "output_4": "db_res3",
+        "output_5": "db_res4",
+        "output_6": "db_res5",
+        "output_7": "db_res6"
+      }
+    },
+    {
+      "name": "downblock_2",
+      "asset": "unet_downblock2_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "hidden_states": "db1_hidden",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states"
+      },
+      "outputs": {
+        "output_0": "out_hidden",
+        "output_1": "db_res7",
+        "output_2": "db_res8"
+      }
+    },
+    {
+      "name": "midblock",
+      "asset": "unet_midblock_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "hidden_states": "out_hidden",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states"
+      },
+      "outputs": {
+        "output_0": "out_hidden"
+      }
+    },
+    {
+      "name": "upblock00",
+      "asset": "unet_upblock_00_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "hidden_states": "out_hidden",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states",
+        "res_hidden_states_0": "db_res6",
+        "res_hidden_states_1": "db_res7",
+        "res_hidden_states_2": "db_res8"
+      },
+      "outputs": {
+        "output_0": "out_hidden",
+        "output_1": "db_res6",
+        "output_2": "db_res7"
+      }
+    },
+    {
+      "name": "upblock01",
+      "asset": "unet_upblock_01_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "hidden_states": "out_hidden",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states",
+        "res_hidden_states_0": "db_res6",
+        "res_hidden_states_1": "db_res7"
+      },
+      "outputs": {
+        "output_0": "out_hidden",
+        "output_1": "db_res6"
+      }
+    },
+    {
+      "name": "upblock02",
+      "asset": "unet_upblock_02_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "hidden_states": "out_hidden",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states",
+        "res_hidden_states_0": "db_res6"
+      },
+      "outputs": {
+        "output_0": "up_hidden0"
+      }
+    },
+    {
+      "name": "upblock1",
+      "asset": "unet_upblock_1_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "sample": "up_hidden0",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states",
+        "down_block_res_samples_0": "db_res0",
+        "down_block_res_samples_1": "db_res1",
+        "down_block_res_samples_2": "db_res2",
+        "down_block_res_samples_3": "db_res3",
+        "down_block_res_samples_4": "db_res4",
+        "down_block_res_samples_5": "db_res5"
+      },
+      "outputs": {
+        "output_0": "up_hidden1"
+      }
+    }
+  ]
+}

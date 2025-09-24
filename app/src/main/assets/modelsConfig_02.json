@@ -1,0 +1,19 @@
+{
+  "baseDir": "/sdcard/Android/data/com.example.snpechainingdemo/files/dlc",
+  "models": [
+    {
+      "name": "upblock02",
+      "asset": "unet_upblock_02_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "hidden_states": "out_hidden",
+        "temb": "temb",
+        "encoder_hidden_states": "encoder_hidden_states",
+        "res_hidden_states_0": "db_res6"
+      },
+      "outputs": {
+        "output_0": "up_hidden0"
+      }
+    }
+  ]
+}
