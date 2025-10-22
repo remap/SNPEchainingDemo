@@ -21,6 +21,11 @@ android {
         }
     }
 
+    packagingOptions {
+        // Include shared libc++ shipped with Android NDK
+        pickFirst("lib/**/libc++_shared.so")
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -75,4 +80,14 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+
+    // Core tokenizer API (Rust tokenizer via JNI)
+    implementation("ai.djl.huggingface:tokenizers:0.34.0")
+
+    // Android native .so for the tokenizer (packaged as an AAR)
+    implementation("ai.djl.android:tokenizer-native:0.33.0"){
+        // Make sure libc++_shared gets pulled in
+        // If missing, add a direct dependency:
+        implementation("org.bytedeco:javacpp:1.5.9")
+    }
 }

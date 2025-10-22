@@ -2,64 +2,82 @@
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp">
 
     <!-- Runtime selector -->
+
+    <!-- Build button -->
+
+    <!-- Run button -->
+
+    <!-- Progress spinner, centered -->
+
+    <Button
+        android:id="@+id/btn_runEncoders"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="228dp"
+        android:layout_marginTop="60dp"
+        android:text="Run Encoders"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rg1" />
+
+    <Button
+        android:id="@+id/btn_runTokenizers"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="104dp"
+        android:layout_marginTop="56dp"
+        android:text="Run Toks"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rg1" />
+
     <RadioGroup
         android:id="@+id/rg1"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
         android:orientation="horizontal"
-        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.0"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+        app:layout_constraintTop_toTopOf="parent">
 
         <RadioButton
             android:id="@+id/CPU"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="CPU"
-            android:checked="false" />
+            android:checked="false"
+            android:text="CPU" />
 
         <RadioButton
             android:id="@+id/GPU"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="GPU"
+            android:layout_marginStart="16dp"
             android:checked="false"
-            android:layout_marginStart="16dp" />
+            android:text="GPU" />
 
         <RadioButton
             android:id="@+id/DSP"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="HTP/DSP"
+            android:layout_marginStart="16dp"
             android:checked="true"
-            android:layout_marginStart="16dp" />
+            android:text="HTP/DSP" />
     </RadioGroup>
 
-    <!-- Build button -->
     <Button
-        android:id="@+id/btn_build"
+        android:id="@+id/btn_buildPipes"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Build"
-        app:layout_constraintTop_toBottomOf="@id/rg1"
-        app:layout_constraintStart_toStartOf="parent"
-        android:layout_marginTop="16dp" />
-
-    <!-- Run button -->
-
-    <Button
-        android:id="@+id/btn_rebuild"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="112dp"
-        android:layout_marginTop="16dp"
-        android:text="reBuild"
+        android:layout_marginStart="232dp"
+        android:layout_marginTop="8dp"
+        android:text="build_pipes"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/rg1" />
 
@@ -67,45 +85,103 @@
         android:id="@+id/btn_run"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
+        android:layout_marginStart="4dp"
+        android:layout_marginTop="4dp"
         android:text="Run"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/btn_build" />
 
-    <!-- Progress spinner, centered -->
+    <Button
+        android:id="@+id/btn_runSDXL"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="104dp"
+        android:layout_marginTop="108dp"
+        android:text="SDXL"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rg1" />
+
+    <Button
+        android:id="@+id/btn_runDecoder"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="228dp"
+        android:layout_marginTop="108dp"
+        android:text="Decoder"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rg1" />
+
+    <Button
+        android:id="@+id/btn_build"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:layout_marginTop="8dp"
+        android:text="Build"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rg1" />
+
+    <Button
+        android:id="@+id/btn_rebuild"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="104dp"
+        android:layout_marginTop="8dp"
+        android:text="reBuild"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rg1" />
+
     <ProgressBar
         android:id="@+id/progressBar"
         style="?android:attr/progressBarStyleLarge"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="100dp"
+        android:layout_height="100dp"
+        android:layout_gravity="center_horizontal"
+        android:indeterminate="true"
+        android:padding="12dp"
         android:visibility="gone"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/imageView"
+        app:layout_constraintEnd_toEndOf="@+id/btn_runSDXL" />
+
+    <ImageView
+        android:id="@+id/imageView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:adjustViewBounds="true"
+        android:scaleType="fitCenter"
+        android:background="#111111"
+        app:layout_constraintTop_toBottomOf="@id/btn_runSDXL"
+        app:layout_constraintBottom_toTopOf="@id/logScroll"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintDimensionRatio="1:1"
+        tools:ignore="MissingConstraints" />
+
 
     <!-- Log output in a scroll view -->
     <ScrollView
         android:id="@+id/logScroll"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
+        android:layout_width="385dp"
+        android:layout_height="69dp"
+        android:layout_marginTop="16dp"
         android:fillViewport="true"
-        app:layout_constraintTop_toBottomOf="@id/btn_run"
         app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp">
+        app:layout_constraintHorizontal_bias="0.0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/btn_run"
+        app:layout_constraintVertical_bias="1.0">
 
         <TextView
             android:id="@+id/txtLog"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textAppearance="?android:attr/textAppearanceSmall"
-            android:typeface="monospace"
-            android:textColor="@android:color/white"
             android:background="#202020"
             android:padding="12dp"
-            android:text="Ready." />
+            android:text="Ready."
+            android:textAppearance="?android:attr/textAppearanceSmall"
+            android:textColor="@android:color/white"
+            android:typeface="monospace" />
     </ScrollView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

@@ -90,7 +90,7 @@ std::vector<GraphRunner::ExecInfo> GraphRunner::runAll(bool reset_session) {
         LOGI_GR("[%s] runtime=%s  time=%lld ms  status=%s",
                 e.name.c_str(), e.runtime.c_str(), (long long)e.ms, ok ? "OK" : "FAIL");
 
-        // 🔎 Log first 8 values of each output tensor
+        // Log first 8 values of each output tensor
         if (ok) {
             for (const auto& t : n.session->outputs()) {
                 const auto& wsName = n.outputBinding.at(t.name);
@@ -100,7 +100,7 @@ std::vector<GraphRunner::ExecInfo> GraphRunner::runAll(bool reset_session) {
 
                 const float* f = static_cast<const float*>(ptr);
                 std::string vals;
-                size_t count = std::min<size_t>(8, nfloat);
+                size_t count = std::min<size_t>(12, nfloat);
                 for (size_t i = 0; i < count; ++i) {
                     vals += std::to_string(f[i]);
                     if (i + 1 < count) vals += ", ";

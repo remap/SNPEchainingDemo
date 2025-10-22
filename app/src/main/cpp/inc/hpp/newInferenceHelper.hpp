@@ -16,9 +16,14 @@ static zdl::DlSystem::RuntimeList makeRuntimeOrder(char pref);
 
 static const TensorInfo* findTensor(const std::vector<TensorInfo>& v, const std::string& name);
 
-static bool ensureWorkspaceBuffer(TensorWorkspace& ws,
+bool ensureWorkspaceBuffer(TensorWorkspace& ws,
                                   const std::string& wsName,
                                   size_t bytes,
+                                  std::string* emsg);
+
+bool ensureWorkspaceBuffer(TensorWorkspace& ws,
+                                  const std::string& wsName,
+                                  const TensorInfo& tinfo,
                                   std::string* emsg);
 
 static inline int64_t msSince(std::chrono::steady_clock::time_point t0);
@@ -43,23 +48,36 @@ std::string buildModelAndGraph(AAssetManager* mgr,
                                 TensorWorkspace& outWs,
                                 GraphRunner& outGraph,
                                 std::string& log,
-                                bool reset_session=false);
+                                bool reset_session);
 
 std::string buildArbitraryChain(AAssetManager* mgr,
                                 std::string& g_modelDir,
                                 const std::string config_filename,
                                 TensorWorkspace& ws,
                                 GraphRunner& gr,
-                                const char defaultRuntimePref='D',
-                                bool reset_sessions=false);
+                                const char defaultRuntimePref,
+                                bool reset_sessions);
+
+std::string buildArbitraryChainFromConfig(AAssetManager* mgr,
+                                std::string& g_modelDir,
+                                const PipelineCfg cfg,
+                                TensorWorkspace& ws,
+                                GraphRunner& gr,
+                                const char defaultRuntimePref,
+                                bool reset_sessions);
 
 std::string rebuildNodeSession(GraphRunner::Node& node);
 std::string rebuildMultipleNodes(std::vector<GraphRunner::Node>& nodes);
 std::string rebuildAllGraphNodes(GraphRunner& gr);
 
-std::string runGraph(GraphRunner& gr, bool reset_sessions=false);
+std::string runGraph(GraphRunner& gr, bool reset_sessions);
 
 //static bool readAssetToString(AAssetManager* mgr,
 //                              const char* filename,
 //                              std::string& out,
 //                              std::string* emsg);
+
+bool readAssetToString(AAssetManager* mgr,
+                       const char* filename,
+                       std::string& out,
+                       std::string* emsg);

@@ -55,7 +55,7 @@ static jstring n_executeInference(JNIEnv* env, jclass, jobject assetManager, jch
     // execute graph
    if (!g_gr) return env->NewStringUTF("Graph not built");
    std::string execution_summary;
-   execution_summary = runGraph(*g_gr);
+   execution_summary = runGraph(*g_gr, false);
 
    return env->NewStringUTF(execution_summary.c_str());
 }

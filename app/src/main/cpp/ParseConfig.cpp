@@ -7,7 +7,13 @@
 #include <vector>
 #include <cctype>
 #include <stdexcept>
+#include <android/log.h>
 #include "ParseConfig.hpp"
+
+#define LOG_TAG "PARSE_CONFIG"
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
 
 // Minimal JSON tokenizer/parser for a restricted subset
 namespace minijson {
@@ -133,7 +139,10 @@ namespace minijson {
                 m.runtime = r.empty()? 0 : r[0];
             } else if (key=="inputs") {
                 if (!parseStringObject(c, m.inputs, emsg)) return false;
-                haveInputs=true;
+                haveInputs = true;
+            } else if (key == "inputEncodings") {
+                if (!parseStringObject(c, m.inputEncodings, emsg)) return false;
+                haveInputs = true;
             } else if (key=="outputs") {
                 if (!parseStringObject(c, m.outputs, emsg)) return false;
                 haveOutputs=true;
@@ -300,7 +309,9 @@ namespace minijson {
             if (!parseString(c,key,emsg)) return false;
             if (!expect(c,':',emsg)) return false;
 
-            if (key=="baseDir") {
+            if (key=="name") {
+                if (!parseString(c, cfg.name, emsg)) return false;
+            } else if (key=="baseDir") {
                 if (!parseString(c,cfg.baseDir,emsg)) continue;
             } else if (key=="models") {
                 // parse array of model objects
@@ -357,7 +368,7 @@ namespace minijson {
 //                    return false;
                     // maybe number: consume it
                     double dummyN; if (!parseNumber(c, dummyN, nullptr)) {
-                        if (emsg) *emsg = "Unsupported value at top-level key '"+key+"'";
+                        if (emsg) *emsg = "Unsupported value in pipeline at top-level key '"+key+"'";
                         return false;
                     }
                 }
@@ -367,7 +378,25 @@ namespace minijson {
             if (!c.end() && c.peek()==',') { ++c.i; continue; }
             if (!c.end() && c.peek()=='}') { ++c.i; break; }
         }
-        if (!haveModels) { if (emsg) *emsg = "Missing 'models' array"; return false; }
+        if (!haveModels) { if (emsg) *emsg = "Pipeline missing 'models' array"; return false; }
+        return true;
+    }
+
+    // Parse an array of pipeline objects: [ { ..pipeline.. }, { ..pipeline.. }, ... ]
+    static bool parsePipelineArray(Cursor& c, std::vector<PipelineCfg>& out, std::string* emsg) {
+        if (!expect(c,'[',emsg)) return false;
+        c.skipWS();
+        if (!c.end() && c.peek()==']') { ++c.i; return true; } // empty
+
+        while (true) {
+            PipelineCfg p;
+            if (!parsePipeline(c, p, emsg)) return false;
+            out.push_back(std::move(p));
+            c.skipWS();
+            if (!c.end() && c.peek()==',') { ++c.i; continue; }
+            if (!expect(c,']',emsg)) return false;
+            break;
+        }
         return true;
     }
 
@@ -382,5 +411,120 @@ bool ParseConfig(const std::string& json, PipelineCfg& cfg, std::string* emsg) {
     if (!minijson::parsePipeline(cur, cfg, emsg)) return false;
     cur.skipWS();
     if (!cur.end()) { if (emsg) *emsg = "Trailing characters after JSON"; return false; }
+    return true;
+}
+
+// Accepts:
+// 1) top-level array: [ {pipeline}, {pipeline}, ... ]
+// 2) top-level object with "pipelines": [ ... ]
+// 3) single pipeline object { ... }  (falls back to 1 pipeline)
+bool ParseMultiConfig(const std::string& json, MultiPipelinesCfg& out, std::string* emsg) {
+    using namespace minijson;
+    Cursor cur;
+    cur.init(json);
+    cur.skipWS();
+    out.pipes.clear();
+
+    if (cur.end()) { if (emsg)*emsg="Empty JSON"; return false; }
+
+    if (cur.peek()=='[') {
+        // Case (1): top-level array of pipelines
+        if (!parsePipelineArray(cur, out.pipes, emsg)) return false;
+    } else if (cur.peek()=='{') {
+        // Could be either a single pipeline object or an object with "pipelines":[...]
+        // Peek inside:
+        size_t save = cur.i;
+        expect(cur,'{',nullptr);
+        // scan object for a "pipelines" key at top level
+        bool foundPipelines = false;
+        while (!cur.end() && cur.peek()!='}') {
+            std::string key;
+            if (!parseString(cur, key, emsg)) { cur.i = save; break; }
+            if (!expect(cur, ':', emsg)) { cur.i = save; break; }
+
+            if (key == "baseDir") {
+                LOGI("[Parse Config] Found base dir!");
+                if (!parseString(cur,out.baseDir,emsg)) continue;
+                cur.skipWS();
+                if (!cur.end() && cur.peek() == ',') { ++cur.i; }
+                continue;
+            } else if (key == "pipelines") {
+                LOGI("[Parse Config] Found pipelines!");
+                foundPipelines = true;
+                if (!parsePipelineArray(cur, out.pipes, emsg)) return false;
+                // skip rest of object keys (if any)
+                while (!cur.end() && cur.peek()!= '}') {
+                    // skip , key:value pairs generically
+                    cur.skipWS();
+                    if (cur.peek()==',') { ++cur.i; }
+                    // read a key or close
+                    cur.skipWS();
+                    if (cur.peek()=='}') break;
+                    std::string k2; if (!parseString(cur,k2,emsg)) return false;
+                    if (!expect(cur,':',emsg)) return false;
+                    // skip value generically (string/object/array/number)
+                    cur.skipWS();
+                    if (cur.peek()=='\"') { std::string dummy; if(!parseString(cur,dummy,emsg)) return false; }
+                    else if (cur.peek()=='{') {
+                        if (!expect(cur,'{',emsg)) return false;
+                        int depth=1;
+                        while(!cur.end() && depth>0){ char ch=cur.get(); if(ch=='\"'){ std::string tmp; cur.i--; if(!parseString(cur,tmp,emsg)) return false; } else if(ch=='{') depth++; else if(ch=='}') depth--; }
+                        if (depth!=0){ if(emsg)*emsg="Unterminated object"; return false; }
+                    } else if (cur.peek()=='[') {
+                        if (!expect(cur,'[',emsg)) return false;
+                        int depth=1;
+                        while(!cur.end() && depth>0){ char ch=cur.get(); if(ch=='\"'){ std::string tmp; cur.i--; if(!parseString(cur,tmp,emsg)) return false; } else if(ch=='[') depth++; else if(ch==']') depth--; }
+                        if (depth!=0){ if(emsg)*emsg="Unterminated array"; return false; }
+                    } else {
+                        double dummyN; if (!parseNumber(cur, dummyN, nullptr)) return false;
+                    }
+                }
+                if (!expect(cur,'}',emsg)) return false;
+                break;
+            } else {
+                // skip value, keep scanning keys
+                cur.skipWS();
+                if (cur.peek()=='\"') { std::string dummy; if(!parseString(cur,dummy,emsg)) return false; }
+                else if (cur.peek()=='{') {
+                    if (!expect(cur,'{',emsg)) return false;
+                    int depth=1;
+                    while(!cur.end() && depth>0){ char ch=cur.get(); if(ch=='\"'){ std::string tmp; cur.i--; if(!parseString(cur,tmp,emsg)) return false; } else if(ch=='{') depth++; else if(ch=='}') depth--; }
+                    if (depth!=0){ if(emsg)*emsg="Unterminated object"; return false; }
+                } else if (cur.peek()=='[') {
+                    if (!expect(cur,'[',emsg)) return false;
+                    int depth=1;
+                    while(!cur.end() && depth>0){ char ch=cur.get(); if(ch=='\"'){ std::string tmp; cur.i--; if(!parseString(cur,tmp,emsg)) return false; } else if(ch=='[') depth++; else if(ch==']') depth--; }
+                    if (depth!=0){ if(emsg)*emsg="Unterminated array"; return false; }
+                } else {
+                    double dummyN; if (!parseNumber(cur, dummyN, nullptr)) return false;
+                }
+
+                cur.skipWS();
+                if (!cur.end() && cur.peek()==',') { ++cur.i; }
+            }
+        }
+
+        if (!foundPipelines) {
+            // Not an object with "pipelines": treat it as a single pipeline object
+            cur.i = save; // rewind to '{'
+            PipelineCfg single;
+            if (!parsePipeline(cur, single, emsg)) return false;
+            out.pipes.push_back(std::move(single));
+        }
+    } else {
+        if (emsg) *emsg = "Top-level JSON must be object, array, or single pipeline object";
+        return false;
+    }
+
+    // consume any trailing ws
+    cur.skipWS();
+    if (!cur.end()) { if (emsg) *emsg = "Trailing characters after JSON"; return false; }
+
+    // put baseDir into pipes
+    if (!out.baseDir.empty()) {
+        for (auto& pipe: out.pipes) {
+            if (pipe.baseDir.empty()) pipe.baseDir = out.baseDir;
+        }
+    }
     return true;
 }

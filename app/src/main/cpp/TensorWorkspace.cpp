@@ -21,7 +21,36 @@ void* TensorWorkspace::allocate(const std::string& name, size_t bytes) {
     auto blk = std::make_shared<Block>();
     blk->bytes.reset(new uint8_t[bytes]);
     blk->size = bytes;
-    Entry e; e.owner = true; e.block = blk;
+    Entry e;
+    e.owner = true;
+    e.block = blk;
+    m_[name] = std::move(e);
+    return blk->bytes.get();
+}
+
+void* TensorWorkspace::allocate(const std::string& name, const TensorInfo& tensor_info) {
+    auto it = m_.find(name);
+    if (it != m_.end()) {
+        // strict: must match size and be owner
+        if (!it->second.owner) {
+            LOGE_WS("allocate('%s'): name already aliasing another block", name.c_str());
+            return nullptr;
+        }
+        if (it->second.block->size != tensor_info.bytes()) {
+            LOGE_WS("allocate('%s'): size mismatch (had %zu, want %zu)", name.c_str(),
+                    it->second.block->size, tensor_info.bytes());
+            return nullptr;
+        }
+        it->second.tinfo = tensor_info;
+        return it->second.block->bytes.get();
+    }
+    auto blk = std::make_shared<Block>();
+    blk->size = tensor_info.bytes();
+    blk->bytes.reset(new uint8_t[blk->size]);
+    Entry e;
+    e.owner = true;
+    e.block = blk;
+    e.tinfo = tensor_info;
     m_[name] = std::move(e);
     return blk->bytes.get();
 }
@@ -32,7 +61,11 @@ void TensorWorkspace::alias(const std::string& dstName, const std::string& srcNa
         LOGE_WS("alias('%s' <- '%s'): src not found", dstName.c_str(), srcName.c_str());
         return;
     }
-    Entry e; e.owner = false; e.ownerKey = srcName; e.block = it->second.block;
+    Entry e;
+    e.owner = false;
+    e.ownerKey = srcName;
+    e.block = it->second.block;
+    e.tinfo = it->second.tinfo;
     m_[dstName] = std::move(e);
 }
 
@@ -40,6 +73,12 @@ void* TensorWorkspace::data(const std::string& name) const {
     auto it = m_.find(name);
     if (it == m_.end()) return nullptr;
     return it->second.block ? it->second.block->bytes.get() : nullptr;
+}
+
+const TensorInfo* TensorWorkspace::tinfoOf(const std::string& name) const {
+    auto it = m_.find(name);
+    if (it == m_.end()) return nullptr;
+    return &it->second.tinfo;
 }
 
 size_t TensorWorkspace::sizeOf(const std::string& name) const {

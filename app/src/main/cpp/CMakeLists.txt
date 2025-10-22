@@ -33,7 +33,8 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         inference.cpp inference_helper.cpp snpedemo_jni.cpp
         TensorWorkspace.cpp ModelSession.cpp GraphRunner.cpp
         ParseConfig.cpp newInferenceHelper.cpp typical_usage_jni.cpp
-        initTensorsHelper.cpp)
+        initTensorsHelper.cpp
+        SDXLPipeline.cpp EulerDiscreteScheduler.cpp)
 
 #add_library(${CMAKE_PROJECT_NAME} SHARED
 #        # List C/C++ source files with relative paths to this CMakeLists.txt.

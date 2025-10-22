@@ -17,49 +17,12 @@
 #include "hpp/MMapFile.h"
 #include "hpp/newInferenceHelper.hpp"
 #include "hpp/initTensorsHelper.h"
+#include "hpp/SDXLPipeline.h"
 
 #define LOG_TAG "SNPE_JNI"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
-
-// Build a RuntimeList from a single preference char (D/G/C).
-//static zdl::DlSystem::RuntimeList makeRuntimeOrder(char pref) {
-//    using zdl::DlSystem::Runtime_t;
-//    zdl::DlSystem::RuntimeList lst;
-//    if      (pref == 'D') lst.add(Runtime_t::DSP);
-//    else if (pref == 'G') lst.add(Runtime_t::GPU);
-//    else                  lst.add(Runtime_t::CPU);
-//    return lst;
-//}
-//
-//// Look up a tensor by name in metadata vector.
-//static const TensorInfo* findTensor(const std::vector<TensorInfo>& v, const std::string& name) {
-//    for (const auto& t : v) if (t.name == name) return &t;
-//    return nullptr;
-//}
-//
-//// Convenience: allocate a workspace buffer if not allocated yet.
-//static bool ensureWorkspaceBuffer(TensorWorkspace& ws,
-//                                  const std::string& wsName,
-//                                  size_t bytes,
-//                                  std::string* emsg) {
-//    // If your TensorWorkspace doesn’t expose a 'has()' method,
-//    // add one; if it does, use it here.
-//    if (!ws.has(wsName)) {
-//        ws.allocate(wsName, bytes);
-//    } else {
-//        // Validate size matches on reuse
-//        const size_t existing = ws.sizeOf(wsName);
-//        if (existing != bytes) {
-//            if (emsg) *emsg = "Workspace tensor size mismatch for '" + wsName +
-//                              "': have " + std::to_string(existing) +
-//                              ", need " + std::to_string(bytes);
-//            return false;
-//        }
-//    }
-//    return true;
-//}
 
 // Keep your workspace / graph state somewhere (or return summaries only)
 //static TensorWorkspace* g_ws = nullptr;   // Example: if you want to fetch outputs later
@@ -86,208 +49,25 @@ static void n_setModelDirectory(JNIEnv* env, jclass, jstring jpath) {
     LOGI("SNPE model base dir set to: %s", g_modelDir.c_str());
 }
 
-
-//std::string buildModelsAndGraph(AAssetManager* mgr, const std::string& configJson, const char defaultRuntimePref,
-//                         std::unique_ptr<TensorWorkspace>& outWs,
-//                         std::unique_ptr<GraphRunner>& outGraph,
-//                         bool reset_session=false) {
-//
-//    using clock = std::chrono::steady_clock;
-//    std::string log;
-//
-//    // 0) Parse config
-//    PipelineCfg cfg;
-//    {
-//        std::string emsg;
-//        if (!ParseConfig(configJson, cfg, &emsg)) {
-//            return "Config parse failed: " + emsg;
-//        }
-//        if (cfg.models.empty()) {
-//            return "Config has no models";
-//        }
+//bool readAssetToString(AAssetManager* mgr,
+//                       const char* filename,
+//                       std::string& out,
+//                       std::string* emsg) {
+//    AAsset* a = AAssetManager_open(mgr, filename, AASSET_MODE_BUFFER);
+//    if (!a) {
+//        if (emsg) *emsg = std::string("Asset open failed: ") + filename;
+//        return false;
 //    }
-//
-//    // 1) Create workspace & graph
-////    auto ws = std::make_unique<TensorWorkspace>();
-////    auto gr = std::make_unique<GraphRunner>(*ws);
-//
-//    int64_t totalAssetMs = 0, totalBuildMs = 0, totalAllocMs = 0, totalGraphMs = 0;
-//
-//    // 2) Process each model
-//    int k = 0;
-//    for (const auto &mc: cfg.models)
-//    {
-//        LOGI("Starting build of Model %s", mc.asset.c_str());
-//        const auto tAsset0 = clock::now();
-//
-//        // mmap DLC
-//        std::string emsg;
-//        MMapAsset mappedAsset;
-//        MMapFile mappedFile;
-//        bool mappedOk = false;
-//
-//        if (g_modelDir.empty() and !cfg.baseDir.empty()) {
-//            g_modelDir = cfg.baseDir + "/";
-//        }
-//        if (!g_modelDir.empty()) {
-//            std::string full = g_modelDir + "/" + mc.asset;
-//            LOGI("Trying DLC from file: %s", full.c_str());
-//            if (mappedFile.openPath(full.c_str(), &emsg)) {
-//                mappedOk = true;
-//            } else {
-//                LOGW("File open failed: %s", emsg.c_str());
-//                emsg.clear();
-//            }
-//        }
-//
-//        if (!mappedOk) {
-//            LOGI("Falling back to APK asset: %s", mc.asset.c_str());
-//            if (!mappedAsset.openUncompressed(mgr, mc.asset.c_str(), &emsg)) {
-//                return "Failed to mmap asset '" + mc.asset + "': " + emsg;
-//            }
-//        }
-//
-//        totalAssetMs += msSince(tAsset0);
-//        LOGI("Model %s opened", mc.asset.c_str());
-//
-//        const void* dlcPtr  = mappedOk ? mappedFile.ptr  : mappedAsset.ptr;
-//        size_t      dlcSize = mappedOk ? mappedFile.size : mappedAsset.size;
-//
-//        // 3) Build ModelSession
-//        const auto tBuild0 = clock::now();
-//        ModelSession::Options opt;
-//        // Runtime order: use per-model pref if present else default
-//        const char pref = (mc.runtime == 0 ? defaultRuntimePref : mc.runtime);
-//        opt.runtimeOrder = makeRuntimeOrder(pref);
-//        opt.perf = zdl::DlSystem::PerformanceProfile_t::BURST;
-//        opt.useUserSuppliedBuffers = true;
-//        opt.initCache = true; //false;
-//
-//        std::string buildLog;
-//        auto session = ModelSession::Create(static_cast<const uint8_t *>(dlcPtr),
-//                                            dlcSize, opt, &buildLog);
-//        totalBuildMs += msSince(tBuild0);
-//        log += "[Build " + mc.name + "] " + buildLog;
-//        LOGI("Session for model %s created", mc.asset.c_str());
-//
-//        if (!session) {
-//            return "SNPE build failed for '" + mc.name + "'";
-//        }
-//
-//        // 4) Validate inputs/outputs exist & allocate workspace for any new names
-//        const auto tAlloc0 = clock::now();
-//
-//        // Inputs
-//        for (const auto &kv: mc.inputs)
-//        {
-//            const std::string &modelTensor = kv.first;
-//            const std::string &wsTensor = kv.second;
-//
-//            const TensorInfo *ti = findTensor(session->inputs(), modelTensor);
-//            if (!ti) {
-//                return "Model '" + mc.name + "': input tensor not found: " + modelTensor;
-//            }
-//            // Inputs are bound from workspace too (so they can be fed by earlier models or app)
-////            if (!ensureWorkspaceBuffer(*ws, wsTensor, ti->bytes(), &emsg)) {
-//            if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
-//                return "Workspace alloc (input) failed for '" + mc.name + "': " + emsg;
-//            }
-//        }
-//
-//        // Outputs
-//        for (const auto& kv : mc.outputs) {
-//            const std::string& modelTensor = kv.first;
-//            const std::string& wsTensor    = kv.second;
-//
-//            const TensorInfo* ti = findTensor(session->outputs(), modelTensor);
-//            if (!ti) {
-//                return "Model '" + mc.name + "': output tensor not found: " + modelTensor;
-//            }
-//            if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
-//                return "Workspace alloc (output) failed for '" + mc.name + "': " + emsg;
-//            }
-//        }
-//
-//        totalAllocMs += msSince(tAlloc0);
-//
-//        // 5) Add node to graph (strict zero-copy)
-//        const auto tGraph0 = clock::now();
-//        GraphRunner::Node node;
-//        node.name     = mc.name;
-//        node.session  = std::move(session);
-//        node.inputBinding  = mc.inputs;   // modelTensor -> workspaceTensor
-//        node.outputBinding = mc.outputs;  // modelTensor -> workspaceTensor
-//
-//        if (!outGraph->addNode(std::move(node), /*strictZeroCopy=*/true)) {
-//            return "addNode failed for '" + mc.name + "'";
-//        }
-//        totalGraphMs += msSince(tGraph0);
-//        LOGI("Graph node for model %s added", mc.asset.c_str());
-//
-//        if (reset_session) {
-////            LOGI("[BUILDING] Resetting session for node %s", node.name.c_str());
-////            node.session.reset();
-////            LOGI("[BUILDING] Session reset for node %s", node.name.c_str());
-//            if (k >= 2) {
-//                LOGI("[BUILDING] Resetting graph!");
-//                outGraph->clear();
-//                k = 0;
-//
-////                usleep(20 * 1000);
-//            }
-//        }
-//        k += 1;
-//
+//    size_t len = AAsset_getLength(a);
+//    out.resize(len);
+//    int r = AAsset_read(a, out.data(), len);
+//    AAsset_close(a);
+//    if (r != (int)len) {
+//        if (emsg) *emsg = "Asset read truncated";
+//        return false;
 //    }
-//
-////    outWs   = std::move(ws);
-////    outGraph= std::move(gr);
-//
-//    char buf[256];
-//    snprintf(buf, sizeof(buf),
-//             "Build OK. assets=%lld ms, build=%lld ms, alloc=%lld ms, graph=%lld ms",
-//             (long long)totalAssetMs, (long long)totalBuildMs,
-//             (long long)totalAllocMs, (long long)totalGraphMs);
-//    log = std::string(buf) + "\n" + log;
-//    return log;
+//    return true;
 //}
-
-//std::string runGraph(GraphRunner& gr) {
-//    auto T0 = std::chrono::steady_clock::now();
-//    auto infos = gr.runAll(/*reset_session*/ true);
-//    auto T1 = std::chrono::steady_clock::now();
-//    auto execMs = std::chrono::duration_cast<std::chrono::milliseconds>(T1 - T0).count();
-//    LOGI("Graph Execution time: %lld", execMs);
-//
-//    // 7) Summarize result
-//    std::string summary;
-//    for (auto& e : infos) {
-//        summary += e.name + " runtime=" + e.runtime + " time=" + std::to_string(e.ms) + "ms "
-//                   + (e.ok ? "OK\n" : "FAIL\n");
-//    }
-//
-//    return summary;
-//}
-
-static bool readAssetToString(AAssetManager* mgr,
-                       const char* filename,
-                       std::string& out,
-                       std::string* emsg) {
-    AAsset* a = AAssetManager_open(mgr, filename, AASSET_MODE_BUFFER);
-    if (!a) {
-        if (emsg) *emsg = std::string("Asset open failed: ") + filename;
-        return false;
-    }
-    size_t len = AAsset_getLength(a);
-    out.resize(len);
-    int r = AAsset_read(a, out.data(), len);
-    AAsset_close(a);
-    if (r != (int)len) {
-        if (emsg) *emsg = "Asset read truncated";
-        return false;
-    }
-    return true;
-}
 
 
 //static jstring n_executeInference(JNIEnv* env, jclass, jobject assetManager, jchar runtimePref) {
@@ -384,6 +164,62 @@ static jstring n_buildArbitrary(JNIEnv* env, jclass, jobject assetManager, jchar
     return env->NewStringUTF(buildingLog.c_str());
 }
 
+
+static jstring n_buildPipes(JNIEnv* env, jclass, jobject assetManager, jchar runtimePref) {
+
+    g_ws.reset(new TensorWorkspace());
+    std::vector<GraphRunner*> v_Gr;
+    g_gr.reset(new GraphRunner(*g_ws));
+
+    // create asset manager
+    AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
+
+    std::string cfgText;
+    std::string emsg;
+    std::string config_filename = "allModelsConfig.json";
+    if (!readAssetToString(mgr, config_filename.c_str(), cfgText, &emsg)) {
+        return env->NewStringUTF(("Config read failed: " + emsg).c_str());
+    }
+    // parse config file
+    MultiPipelinesCfg mp_cfg;
+    {
+        std::string emsg;
+        if (!ParseMultiConfig(cfgText, mp_cfg, &emsg)) {
+            LOGE("Config parse failed: %s", emsg.c_str());
+            return env->NewStringUTF(("Config parse failed: " + emsg).c_str());
+        }
+        if (mp_cfg.pipes.empty()) {
+            LOGE("Config has no pipelines");
+            return env->NewStringUTF(("Config parse failed: " + emsg).c_str());
+        }
+    }
+
+    std::string log;
+    for (auto& pipe : mp_cfg.pipes) {
+
+        LOGI("building for pipe: %s", pipe.name.c_str());
+        if (pipe.name == "unet_ublocks") {
+            log += buildArbitraryChainFromConfig(mgr,
+                                      g_modelDir,
+                                      pipe,
+                                      *g_ws,
+                                      *g_gr,
+                                      'D',
+                                      true);
+        } else {
+            log += buildArbitraryChainFromConfig(mgr,
+                                                 g_modelDir,
+                                                 pipe,
+                                                 *g_ws,
+                                                 *new GraphRunner(*g_ws),
+                                                 'D',
+                                                 true);
+        }
+    }
+
+    return env->NewStringUTF(("Building done! \n " + log).c_str());
+}
+
 static jstring n_rebuildArbitrary(JNIEnv* env, jclass) {
 
     std::string rebuildingLog;
@@ -398,223 +234,6 @@ static jstring n_rebuildArbitrary(JNIEnv* env, jclass) {
 
 }
 
-//static jstring n_buildArbitrary(JNIEnv* env, jclass, jobject assetManager, jchar runtimePref) {
-//
-//    g_ws.reset(new TensorWorkspace());
-//    g_gr.reset(new GraphRunner(*g_ws));
-//
-//    // create asset manager
-//    AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
-//
-//    // read config file
-//    std::string cfgText;
-//    std::string emsg;
-//    std::string config_filename = "modelsConfig.json";
-//    if (!readAssetToString(mgr, config_filename.c_str(), cfgText, &emsg)) {
-//        return env->NewStringUTF(("Config read failed: " + emsg).c_str());
-//    }
-//
-//    // create models, allocate buffers and build graph
-//    std::string buildingLog;
-//    buildingLog = buildModelsAndGraph(mgr, cfgText, runtimePref, g_ws, g_gr, true);
-//    return env->NewStringUTF(buildingLog.c_str());
-//}
-
-
-
-//static jstring n_buildGraph(JNIEnv* env, jclass /*cls*/, jobject assetManager, jchar runtimePref) {
-//    using clock = std::chrono::steady_clock;
-//
-//    AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
-//    std::string emsg;
-//    // 1) Read DLCs into memory
-//    auto readAsset = [&](const char* name, std::vector<uint8_t>& buf) -> bool {
-//        AAsset* a = AAssetManager_open(mgr, name, AASSET_MODE_UNKNOWN);
-//        if (!a) { LOGE("asset open failed: %s", name); return false; }
-//        buf.resize(AAsset_getLength(a));
-//        AAsset_read(a, buf.data(), buf.size());
-//        AAsset_close(a);
-//        return true;
-//    };
-//
-////    std::vector<uint8_t> dlc1, dlc2;
-//    const std::string model1_name = "unet_downblock1_8Gen2_prepared.dlc";
-//    const std::string model2_name = "unet_downblock2_8Gen2_prepared.dlc";
-////    auto T0 = clock::now();
-////    if (!readAsset(model1_name.c_str(), dlc1) || !readAsset(model2_name.c_str(), dlc2)) {
-////        return env->NewStringUTF("Failed to read DLCs");
-////    }
-////    auto T1 = clock::now();
-////    auto AssetLoadingMs = std::chrono::duration_cast<std::chrono::milliseconds>(T1 - T0).count();
-////    LOGI("Asset Loading time: %lld", AssetLoadingMs);
-//    MMapAsset dlc1, dlc2;
-////    std::vector<uint8_t> dlc1Buf, dlc2Buf; // fallback buffer
-////    const uint8_t* bytes = nullptr;
-////    size_t         nbytes = 0;
-//    auto T0 = clock::now();
-//    if (!dlc1.openUncompressed(mgr, model1_name.c_str(), &emsg)) {
-//        LOGE("DLC1 map failed: %s", emsg.c_str());
-//        return env->NewStringUTF("Map model1 failed");
-//    }
-//    if (!dlc2.openUncompressed(mgr, model2_name.c_str(), &emsg)) {
-//        LOGE("DLC2 map failed: %s", emsg.c_str());
-//        return env->NewStringUTF("Map model2 failed");
-//    }
-//    auto T1 = clock::now();
-//    auto AssetLoadingMs = std::chrono::duration_cast<std::chrono::milliseconds>(T1 - T0).count();
-//    LOGI("Asset Loading time: %lld", AssetLoadingMs);
-//
-//    // 2) Build ModelSession options
-//    ModelSession::Options opt;
-//    // prefer HTP then CPU; or just set order empty and let your Create() fallback fill it
-//    if (runtimePref == 'D') { opt.runtimeOrder.add(zdl::DlSystem::Runtime_t::DSP); }
-//    else if (runtimePref == 'G') { opt.runtimeOrder.add(zdl::DlSystem::Runtime_t::GPU); }
-//    else { opt.runtimeOrder.add(zdl::DlSystem::Runtime_t::CPU); }
-//    opt.perf = zdl::DlSystem::PerformanceProfile_t::BURST;
-//    opt.useUserSuppliedBuffers = true;
-//    opt.initCache = false;
-//
-//    std::string buildLog;
-//    auto tB0 = clock::now();
-////    g_s1 = ModelSession::Create(dlc1.data(), dlc1.size(), opt, &buildLog);
-//    g_s1 = ModelSession::Create(static_cast<const uint8_t*>(dlc1.ptr), dlc1.size, opt, &buildLog);
-//    auto tB1 = clock::now();
-//    auto build1Ms = std::chrono::duration_cast<std::chrono::milliseconds>(tB1 - tB0).count();
-//    LOGI("Model 1 Building time: %lld", build1Ms);
-//
-//    auto tB2 = clock::now();
-////    g_s2 = ModelSession::Create(dlc2.data(), dlc2.size(), opt, &buildLog);
-//    g_s2 = ModelSession::Create(static_cast<const uint8_t*>(dlc2.ptr), dlc2.size, opt, &buildLog);
-//    auto tB3 = clock::now();
-//    auto build2Ms = std::chrono::duration_cast<std::chrono::milliseconds>(tB3 - tB2).count();
-//    LOGI("Model 2 Building time: %lld", build2Ms);
-//
-//    if (!g_s1 || !g_s2) {
-//        LOGE("Build failed:\n%s", buildLog.c_str());
-//        return env->NewStringUTF(("Build failed:\n" + buildLog).c_str());
-//    }
-//
-//    // 3) Allocate workspace (names/sizes from tensor metadata)
-//    g_ws.reset(new TensorWorkspace());
-//    auto findT = [](const std::vector<TensorInfo>& v, const char* name)->const TensorInfo*{
-//        for (auto& t: v) if (t.name == name) return &t; return nullptr;
-//    };
-//    //discover s1.s2 tensors
-//    auto T_disc0 = clock::now();
-//    for (auto& t : g_s1->inputs())  LOGI("[s1] IN  %s", t.name.c_str());
-//    for (auto& t : g_s1->outputs()) LOGI("[s1] OUT %s", t.name.c_str());
-//    for (auto& t : g_s2->inputs())  LOGI("[s2] IN  %s", t.name.c_str());
-//    for (auto& t : g_s2->outputs()) LOGI("[s2] OUT %s", t.name.c_str());
-//
-//    const TensorInfo* s1_sample  = findT(g_s1->inputs(),  "sample");
-//    const TensorInfo* s1_temb    = findT(g_s1->inputs(),  "temb");
-//    const TensorInfo* s1_ehs     = findT(g_s1->inputs(),  "encoder_hidden_states");
-//    const TensorInfo* s1_out_h   = findT(g_s1->outputs(), "output_0");
-//    const TensorInfo* s1_res0    = findT(g_s1->outputs(), "output_1");
-//    const TensorInfo* s1_res1    = findT(g_s1->outputs(), "output_2");
-//    const TensorInfo* s1_res2    = findT(g_s1->outputs(), "output_3");
-//    const TensorInfo* s1_res3    = findT(g_s1->outputs(), "output_4");
-//    const TensorInfo* s1_res4    = findT(g_s1->outputs(), "output_5");
-//    const TensorInfo* s1_res5    = findT(g_s1->outputs(), "output_6");
-//    const TensorInfo* s1_res6    = findT(g_s1->outputs(), "output_7");
-//
-//    const TensorInfo* s2_in_h    = findT(g_s2->inputs(),  "hidden_states");
-//    const TensorInfo* s2_temb    = findT(g_s2->inputs(),  "temb");
-//    const TensorInfo* s2_ehs     = findT(g_s2->inputs(),  "encoder_hidden_states");
-//    const TensorInfo* s2_out_h    = findT(g_s2->outputs(), "output_0");
-//    const TensorInfo* s2_res0    = findT(g_s2->outputs(), "output_1");
-//    const TensorInfo* s2_res1    = findT(g_s2->outputs(), "output_2");
-//
-//    auto T_disc1 = clock::now();
-//    auto discoveryMs = std::chrono::duration_cast<std::chrono::milliseconds>(T_disc1 - T_disc0).count();
-//    LOGI("Tensor discovery time: %lld", discoveryMs);
-//
-//    if (!s1_sample || !s1_temb || !s1_ehs || !s1_out_h || !s1_res0 || !s1_res1 || !s1_res2 ||
-//        !s1_res3 || !s1_res4 || !s1_res5 || !s1_res6 ||
-//        !s2_in_h   || !s2_temb || !s2_ehs || !s2_out_h || !s2_res0 || !s2_res1) {
-//        LOGE("FINDING TENSORS","Missing expected tensor names—adjust bindings.");
-//        return env->NewStringUTF("Missing expected tensor names—adjust bindings.");
-//    }
-//
-//    // allocate
-//    auto T_alloc0 = clock::now();
-//    g_ws->allocate("sample",                s1_sample->bytes());
-//    g_ws->allocate("temb",                  s1_temb->bytes());
-//    g_ws->allocate("encoder_hidden_states", s1_ehs->bytes());
-//
-//    g_ws->allocate("out1_hidden", s1_out_h->bytes());
-//    g_ws->allocate("res0",       s1_res0->bytes());
-//    g_ws->allocate("res1",       s1_res1->bytes());
-//    g_ws->allocate("res2",       s1_res2->bytes());
-//    g_ws->allocate("res3",       s1_res3->bytes());
-//    g_ws->allocate("res4",       s1_res4->bytes());
-//    g_ws->allocate("res5",       s1_res5->bytes());
-//    g_ws->allocate("res6",       s1_res6->bytes());
-//
-//    g_ws->allocate("final_out",  s2_out_h->bytes());
-//    g_ws->allocate("res7",       s2_res0->bytes());
-//    g_ws->allocate("res8",       s2_res1->bytes());
-//
-//    // 4) Seed inputs (for now fill random / zeros, just to prove the chain works)
-//    std::memset(g_ws->data("sample"),                0, g_ws->sizeOf("sample"));
-//    std::memset(g_ws->data("temb"),                  0, g_ws->sizeOf("temb"));
-//    std::memset(g_ws->data("encoder_hidden_states"), 0, g_ws->sizeOf("encoder_hidden_states"));
-//    auto T_alloc1 = clock::now();
-//    auto allocMs = std::chrono::duration_cast<std::chrono::milliseconds>(T_alloc1 - T_alloc0).count();
-//    LOGI("Tensor allocation time: %lld", allocMs);
-//
-//    // buid graph runner
-//    g_gr.reset(new GraphRunner(*g_ws));
-//    auto T_graph0 = clock::now();
-//    GraphRunner::Node n1;
-//    n1.name = "Model1";
-//    n1.session = std::move(g_s1);
-//    n1.inputBinding  = {
-//            {"sample",                "sample"},
-//            {"temb",                  "temb"},
-//            {"encoder_hidden_states", "encoder_hidden_states"},
-//    };
-//    n1.outputBinding = {
-//            {"output_0", "out1_hidden"},
-//            {"output_1",       "res0"},
-//            {"output_2",       "res1"},
-//            {"output_3",       "res2"},
-//            {"output_4",       "res3"},
-//            {"output_5",       "res4"},
-//            {"output_6",       "res5"},
-//            {"output_7",       "res6"},
-//    };
-//    if (!g_gr->addNode(std::move(n1), /*strictZeroCopy=*/true)) {
-//        return env->NewStringUTF("addNode(Model1) failed");
-//    }
-//
-//    GraphRunner::Node n2;
-//    n2.name = "Model2";
-//    n2.session = std::move(g_s2);
-//    n2.inputBinding  = {
-//            {"hidden_states",         "out1_hidden"},
-//            {"temb",                  "temb"},
-//            {"encoder_hidden_states", "encoder_hidden_states"},
-//    };
-//    n2.outputBinding = {
-//            {"output_0", "final_out"},
-//            {"output_1", "res7"},
-//            {"output_2", "res8"},
-//    };
-//    if (!g_gr->addNode(std::move(n2), /*strictZeroCopy=*/true)) {
-//        return env->NewStringUTF("addNode(Model2) failed");
-//    }
-//    auto T_graph1 = clock::now();
-//    auto graphMs = std::chrono::duration_cast<std::chrono::milliseconds>(T_graph1 - T_graph0).count();
-//    LOGI("Graph building time: %lld", graphMs);
-//
-//    char msg[256];
-//    auto buildMs = AssetLoadingMs + build1Ms + build2Ms + discoveryMs + allocMs + graphMs;
-//    snprintf(msg, sizeof(msg), "Build OK in %lld ms. final_out bytes=%zu",
-//             (long long)buildMs, g_ws->sizeOf("final_out"));
-//    return env->NewStringUTF(msg);
-//
-//}
 
 static jstring n_runGraphOld(JNIEnv* env, jclass) {
     // 6) Run
@@ -632,6 +251,160 @@ static jstring n_runGraphOld(JNIEnv* env, jclass) {
                    + (e.ok ? "OK\n" : "FAIL\n");
     }
     return env->NewStringUTF(summary.c_str());
+}
+
+static jstring n_runSDXL(JNIEnv* env, jclass, jobject assetManager, jintArray jIds1, jintArray jIds2) {
+
+    std::string config_filename = "textEncoders_modelsConfig.json"; // change name as needed
+    std::string log;
+    bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
+    AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
+
+    if (!jIds1 || !jIds2) {
+        LOGE("ids arrays are null");
+        return env->NewStringUTF("ids arrays are null");
+    }
+    const jsize len1 = env->GetArrayLength(jIds1);
+    const jsize len2 = env->GetArrayLength(jIds2);
+    if (len1 <= 0 || len2 <= 0) {
+        LOGE("ids length invalid");
+        return env->NewStringUTF("ids length invalid");
+    }
+    LOGI("Here 1");
+    jboolean isCopy1 = JNI_FALSE, isCopy2 = JNI_FALSE;
+    jint* p1 = env->GetIntArrayElements(jIds1, &isCopy1);
+    LOGI("Here 2");
+    jint* p2 = env->GetIntArrayElements(jIds2, &isCopy2);
+    LOGI("Here 3");
+    if (!p1 || !p2) {
+        if (p1) env->ReleaseIntArrayElements(jIds1, p1, JNI_ABORT);
+        if (p2) env->ReleaseIntArrayElements(jIds2, p2, JNI_ABORT);
+        LOGE("GetIntArrayElements failed");
+        return env->NewStringUTF("GetIntArrayElements failed");
+    }
+
+    std::unique_ptr<TensorWorkspace> ws_sdxl; // holds workspace tensors
+    std::unique_ptr<GraphRunner> gr_sdxl; // holds graph runner
+//    std::string g_modelDir; // holds the model directory path
+
+    ws_sdxl.reset(new TensorWorkspace());
+    gr_sdxl.reset(new GraphRunner(*ws_sdxl));
+
+    std::unique_ptr<SDXLPipeline> g_sdxl_pipe;
+    LOGI("CREATING SDXL PIPE");
+    g_sdxl_pipe.reset(new SDXLPipeline(*ws_sdxl, *gr_sdxl, mgr, "", config_filename));
+    LOGI("CREATED SDXL PIPE");
+
+//    log = buildArbitraryChain(mgr, g_modelDir, config_filename, *g_ws, *g_gr, runtimePref, reset_sessions);
+    bool init_encoders_successfull = false;
+    init_encoders_successfull = g_sdxl_pipe->init_text_encoders('D');
+
+    std::string execution_summary;
+    if (init_encoders_successfull) {
+        LOGI("encoders initialization successful!");
+        execution_summary = g_sdxl_pipe->run_encoders(reinterpret_cast<int32_t*>(p1),
+                                                      reinterpret_cast<int32_t*>(p2));
+    } else {
+        LOGI("encoders initialization NOT successful!");
+    }
+//    / Release ASAP
+    env->ReleaseIntArrayElements(jIds1, p1, JNI_ABORT); // we copied into workspace already
+    env->ReleaseIntArrayElements(jIds2, p2, JNI_ABORT);
+
+   return env->NewStringUTF(execution_summary.c_str());
+}
+
+static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager, jintArray jIds1, jintArray jIds2, jboolean decode_only) {
+
+    std::string encoders_config_filename = "textEncoders_modelsConfig.json"; // change name as needed
+//    std::string allModels_config_filename = "allModelsConfig.json"; // change name as needed
+    std::string allModels_config_filename = "allModelsConfigNoIO.json"; // change name as needed
+//    std::string allModels_config_filename = "allModelsConfig8Elite.json"; // change name as needed
+    std::string log;
+    bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
+    AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
+
+    if (!jIds1 || !jIds2) {
+        LOGE("ids arrays are null");
+//        return env->NewStringUTF("ids arrays are null");
+        return env->NewFloatArray(0);
+    }
+    const jsize len1 = env->GetArrayLength(jIds1);
+    const jsize len2 = env->GetArrayLength(jIds2);
+    if (len1 <= 0 || len2 <= 0) {
+        LOGE("ids length invalid");
+//        return env->NewStringUTF("ids length invalid");
+        return env->NewFloatArray(0);
+    }
+    LOGI("Here 1");
+    jboolean isCopy1 = JNI_FALSE, isCopy2 = JNI_FALSE;
+    jint* p1 = env->GetIntArrayElements(jIds1, &isCopy1);
+    LOGI("Here 2");
+    jint* p2 = env->GetIntArrayElements(jIds2, &isCopy2);
+    LOGI("Here 3");
+    if (!p1 || !p2) {
+        if (p1) env->ReleaseIntArrayElements(jIds1, p1, JNI_ABORT);
+        if (p2) env->ReleaseIntArrayElements(jIds2, p2, JNI_ABORT);
+        LOGE("GetIntArrayElements failed");
+//        return env->NewStringUTF("GetIntArrayElements failed");
+        return env->NewFloatArray(0);
+    }
+
+    std::unique_ptr<TensorWorkspace> ws_sdxl; // holds workspace tensors
+    std::unique_ptr<GraphRunner> gr_sdxl_encoders; // holds graph runner
+//    std::string g_modelDir; // holds the model directory path
+
+    ws_sdxl.reset(new TensorWorkspace());
+    gr_sdxl_encoders.reset(new GraphRunner(*ws_sdxl));
+
+    std::unique_ptr<SDXLPipeline> g_sdxl_pipe;
+    LOGI("CREATING SDXL PIPE");
+    g_sdxl_pipe.reset(new SDXLPipeline(*ws_sdxl,
+                                       mgr,
+                                       "",
+                                       *gr_sdxl_encoders,
+                                       encoders_config_filename,
+                                       allModels_config_filename
+                                       ));
+    LOGI("CREATED SDXL PIPE");
+
+//    log = buildArbitraryChain(mgr, g_modelDir, config_filename, *g_ws, *g_gr, runtimePref, reset_sessions);
+//    bool init_encoders_successfull = false;
+//    init_encoders_successfull = g_sdxl_pipe->init_text_encoders('D');
+
+    bool init_networks_successful = false;
+    init_networks_successful = g_sdxl_pipe->init_networks('D');
+
+    std::string execution_summary;
+    std::vector<float> img;
+    if (init_networks_successful) {
+        LOGI("Networks initialization successful!");
+//        g_sdxl_pipe->overall_pipeline(reinterpret_cast<int32_t*>(p1),
+//                                                      reinterpret_cast<int32_t*>(p2));
+        img = g_sdxl_pipe->overall_pipeline(reinterpret_cast<int32_t*>(p1),
+                                            reinterpret_cast<int32_t*>(p2),
+                                            decode_only);
+    } else {
+        LOGI("Networks initialization NOT successful!");
+    }
+//    / Release ASAP
+    env->ReleaseIntArrayElements(jIds1, p1, JNI_ABORT); // we copied into workspace already
+    env->ReleaseIntArrayElements(jIds2, p2, JNI_ABORT);
+
+    execution_summary = "Pipeline executed successfully!";
+
+    g_ws.reset();
+    g_ws = std::move(ws_sdxl);
+
+    if (img.empty()) {
+        return env->NewFloatArray(0);
+    }
+    jfloatArray out = env->NewFloatArray(static_cast<jsize>(img.size()));
+    if (!out) return nullptr;
+    env->SetFloatArrayRegion(out, 0, static_cast<jsize>(img.size()), img.data());
+    return out;
+
+//    return env->NewStringUTF(execution_summary.c_str());
 }
 
 // ------------ Native implementations (static) ------------
@@ -931,8 +704,12 @@ static const JNINativeMethod kMethods[] = {
         {"runGraph", "()Ljava/lang/String;", (void*)n_runGraphOld},
 //        {"executeInference", "(Landroid/content/res/AssetManager;C)Ljava/lang/String;", (void*)n_executeInference},
         {"buildArbitrary", "(Landroid/content/res/AssetManager;C)Ljava/lang/String;", (void*) n_buildArbitrary},
+        {"buildPipes", "(Landroid/content/res/AssetManager;C)Ljava/lang/String;", (void*) n_buildPipes},
         {"rebuildArbitrary", "()Ljava/lang/String;", (void*) n_rebuildArbitrary},
         {"setModelDirectory", "(Ljava/lang/String;)V", (void*)n_setModelDirectory},
+        {"runSDXL", "(Landroid/content/res/AssetManager;[I[I)Ljava/lang/String;", (void*) n_runSDXL},
+//        {"runSDXLWhole", "(Landroid/content/res/AssetManager;[I[I)Ljava/lang/String;", (void*) n_runSDXLWhole},
+        {"runSDXLWhole", "(Landroid/content/res/AssetManager;[I[IZ)[F", (void*) n_runSDXLWhole},
 };
 
 

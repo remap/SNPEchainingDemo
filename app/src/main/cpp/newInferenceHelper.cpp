@@ -47,7 +47,7 @@ static const TensorInfo* findTensor(const std::vector<TensorInfo>& v, const std:
 //}
 
 // Convenience: allocate a workspace buffer if not allocated yet.
-static bool ensureWorkspaceBuffer(TensorWorkspace& ws,
+bool ensureWorkspaceBuffer(TensorWorkspace& ws,
                                   const std::string& wsName,
                                   size_t bytes,
                                   std::string* emsg) {
@@ -73,6 +73,32 @@ static bool ensureWorkspaceBuffer(TensorWorkspace& ws,
     return true;
 }
 
+bool ensureWorkspaceBuffer(TensorWorkspace& ws,
+                                  const std::string& wsName,
+                                  const TensorInfo& tinfo,
+                                  std::string* emsg) {
+    // If your TensorWorkspace doesn’t expose a 'has()' method,
+    // add one; if it does, use it here.
+    if (!ws.has(wsName)) {
+        void* p = ws.allocate(wsName, tinfo);
+        if (!p) {
+            if (emsg) *emsg = "allocate('" + wsName + "') failed";
+            return false;
+        }
+        std::memset(p, 0, tinfo.bytes()); // zero on first alloc
+    } else {
+        // Validate size matches on reuse
+        const size_t existing = ws.sizeOf(wsName);
+        if (existing != tinfo.bytes()) {
+            if (emsg) *emsg = "Workspace tensor size mismatch for '" + wsName +
+                              "': have " + std::to_string(existing) +
+                              ", need " + std::to_string(tinfo.bytes());
+            return false;
+        }
+    }
+    return true;
+}
+
 // Times:
 static inline int64_t msSince(std::chrono::steady_clock::time_point t0) {
     using clock = std::chrono::steady_clock;
@@ -88,33 +114,12 @@ std::string buildModelAndGraph(AAssetManager* mgr,
                                 TensorWorkspace& outWs,
                                 GraphRunner& outGraph,
                                 std::string& log,
-                                bool reset_session) {
+                                bool reset_session=false) {
 
     using clock = std::chrono::steady_clock;
-//    std::string log;
-
-    // 0) Parse config
-//    PipelineCfg cfg;
-//    {
-//        std::string emsg;
-//        if (!ParseConfig(configJson, cfg, &emsg)) {
-//            return "Config parse failed: " + emsg;
-//        }
-//        if (cfg.models.empty()) {
-//            return "Config has no models";
-//        }
-//    }
-
-    // 1) Create workspace & graph
-//    auto ws = std::make_unique<TensorWorkspace>();
-//    auto gr = std::make_unique<GraphRunner>(*ws);
 
     int64_t totalAssetMs = 0, totalBuildMs = 0, totalAllocMs = 0, totalGraphMs = 0;
 
-    // 2) Process each model
-//    int k = 0;
-//    for (const auto &mc: cfg.models)
-//    {
     LOGI("Starting build of Model %s", mc.asset.c_str());
     const auto tAsset0 = clock::now();
 
@@ -164,7 +169,8 @@ std::string buildModelAndGraph(AAssetManager* mgr,
 
     std::string buildLog;
     auto session = ModelSession::Create(static_cast<const uint8_t *>(dlcPtr),
-                                        dlcSize, owner, opt, &buildLog);
+                                        dlcSize, owner, opt, &buildLog,
+                                        mc.inputEncodings);
     totalBuildMs += msSince(tBuild0);
     log += "[Build " + mc.name + "] " + buildLog;
     LOGI("Session for model %s created", mc.asset.c_str());
@@ -189,7 +195,8 @@ std::string buildModelAndGraph(AAssetManager* mgr,
         // Inputs are bound from workspace too (so they can be fed by earlier models or app)
 //            if (!ensureWorkspaceBuffer(*ws, wsTensor, ti->bytes(), &emsg)) {
 //        if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
-        if (!ensureWorkspaceBuffer(outWs, wsTensor, ti->bytes(), &emsg)) {
+        if (!ensureWorkspaceBuffer(outWs, wsTensor, *ti, &emsg)) {
+//        if (!ensureWorkspaceBuffer(outWs, wsTensor, ti->bytes(), &emsg)) {
             return "Workspace alloc (input) failed for '" + mc.name + "': " + emsg;
         }
     }
@@ -204,7 +211,8 @@ std::string buildModelAndGraph(AAssetManager* mgr,
             return "Model '" + mc.name + "': output tensor not found: " + modelTensor;
         }
 //        if (!ensureWorkspaceBuffer(*outWs, wsTensor, ti->bytes(), &emsg)) {
-        if (!ensureWorkspaceBuffer(outWs, wsTensor, ti->bytes(), &emsg)) {
+        if (!ensureWorkspaceBuffer(outWs, wsTensor, *ti, &emsg)) {
+//        if (!ensureWorkspaceBuffer(outWs, wsTensor, ti->bytes(), &emsg)) {
             return "Workspace alloc (output) failed for '" + mc.name + "': " + emsg;
         }
     }
@@ -266,8 +274,8 @@ bool readAssetToString(AAssetManager* mgr,
 }
 
 std::string buildArbitraryChain(AAssetManager* mgr,
-                                const std::string config_filename,
                                 std::string& g_modelDir,
+                                const std::string config_filename,
                                 TensorWorkspace& ws,
                                 GraphRunner& gr,
                                 const char defaultRuntimePref='D',
@@ -297,6 +305,39 @@ std::string buildArbitraryChain(AAssetManager* mgr,
             return "Config has no models";
         }
     }
+
+    // create models, allocate buffers and build graph
+    std::string buildingLog;
+    for (const auto &mc: cfg.models)
+    {
+        buildingLog = buildModelAndGraph(mgr,
+                            g_modelDir,
+                            cfg,
+                            mc,
+                            defaultRuntimePref,
+                            ws,
+                            gr,
+                            buildingLog,
+                            reset_sessions);
+    }
+
+    {
+        std::string semsg;
+        if (!seedRequiredInputs(cfg, ws, mgr, &semsg)) {
+            return "Input seeding failed: " + semsg;
+        }
+    }
+
+    return buildingLog;
+}
+
+std::string buildArbitraryChainFromConfig(AAssetManager* mgr,
+                                std::string& g_modelDir,
+                                const PipelineCfg cfg,
+                                TensorWorkspace& ws,
+                                GraphRunner& gr,
+                                const char defaultRuntimePref='D',
+                                bool reset_sessions=false) {
 
     // create models, allocate buffers and build graph
     std::string buildingLog;

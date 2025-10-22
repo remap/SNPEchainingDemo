@@ -10,6 +10,7 @@ struct ModelCfg {
     char runtime = 'D'; // 'D'|'G'|'C' or 0 if absent
     std::unordered_map<std::string, std::string> inputs;
     std::unordered_map<std::string, std::string> outputs;
+    std::unordered_map<std::string, std::string> inputEncodings;
 };
 
 // In your config types (e.g., ParseConfig.hpp)
@@ -26,10 +27,18 @@ struct InitSpec {
 
 
 struct PipelineCfg {
+    std::string name;
     std::vector<ModelCfg> models;
     std::string baseDir;
     std::unordered_map<std::string, InitSpec> init; // wsTensorName -> InitSpec
 };
 
+struct MultiPipelinesCfg {
+    std::vector<PipelineCfg> pipes;
+    std::string baseDir;
+};
+
 // Returns true on success; fills 'cfg'. On failure, returns false and sets *emsg.
 bool ParseConfig(const std::string& json, PipelineCfg& cfg, std::string* emsg);
+
+bool ParseMultiConfig(const std::string& json, MultiPipelinesCfg& out, std::string* emsg);

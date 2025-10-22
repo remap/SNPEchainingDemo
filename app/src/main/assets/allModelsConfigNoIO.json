@@ -1,0 +1,256 @@
+{
+  "baseDir": "/sdcard/Android/data/com.example.snpechainingdemo/files/dlc",
+  "pipelines": [
+    {
+      "name": "text_encoders",
+      "models": [
+        {
+          "name": "text_encoder",
+          "asset": "text_encoder_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "input_ids": "input_ids_1"
+          },
+          "inputEncodings": {
+            "input_ids": "int32"
+          },
+          "outputs": {
+            "output_0": "prompt_embeds_1"
+          }
+        },
+        {
+          "name": "text_encoder_2",
+          "asset": "text_encoder_2_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "input_ids": "input_ids_2"
+          },
+          "inputEncodings": {
+            "input_ids": "int32"
+          },
+          "outputs": {
+            "output_0": "pooled_embeds",
+            "output_1": "prompt_embeds_2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_time_embd",
+      "models": [
+        {
+          "name": "unet_time_proj_and_emb",
+          "asset": "unet_time_proj_and_emb_fp32_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "timestep": "timestep"
+          },
+          "outputs": {
+            "output_0": "t_emb",
+            "output_1": "emb"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_aug_emb",
+      "models": [
+        {
+          "name": "unet_aug_emb_net",
+          "asset": "unet_aug_emb_net_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "time_ids": "time_ids",
+            "text_embeds": "pooled_embeds"
+          },
+          "outputs": {
+            "output_0": "aug_emb"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_in_conv",
+      "models": [
+        {
+          "name": "conv_in",
+          "asset": "unet_in_conv_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "sample": "latent_model_input"
+          },
+          "outputs": {
+            "output_0": "sample_for_ublocks"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_ublocks",
+      "models": [
+        {
+          "name": "downblock_1",
+          "asset": "unet_db1_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "sample": "sample_for_ublocks",
+            "temb": "emb",
+            "encoder_hidden_states": "encoder_hidden_states"
+          },
+          "outputs": {
+            "output_0": "db1_hidden",
+            "output_1": "db_res0",
+            "output_2": "db_res1",
+            "output_3": "db_res2",
+            "output_4": "db_res3",
+            "output_5": "db_res4",
+            "output_6": "db_res5",
+            "output_7": "db_res6"
+          }
+        },
+        {
+          "name": "downblock_2",
+          "asset": "unet_db2_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "hidden_states": "db1_hidden",
+            "temb": "emb",
+            "encoder_hidden_states": "encoder_hidden_states"
+          },
+          "outputs": {
+            "output_0": "out_hidden_d2",
+            "output_1": "db_res7",
+            "output_2": "db_res8"
+          }
+        },
+        {
+          "name": "midblock",
+          "asset": "unet_mb_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "hidden_states": "out_hidden_d2",
+            "temb": "emb",
+            "encoder_hidden_states": "encoder_hidden_states"
+          },
+          "outputs": {
+            "output_0": "out_hidden_m"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_upblock00",
+      "models": [
+        {
+          "name": "upblock00",
+          "asset": "unet_ub00_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "hidden_states": "out_hidden_m",
+            "temb": "emb",
+            "encoder_hidden_states": "encoder_hidden_states",
+            "res_hidden_states_0": "db_res6",
+            "res_hidden_states_1": "db_res7",
+            "res_hidden_states_2": "db_res8"
+          },
+          "outputs": {
+            "output_0": "out_hidden_u00",
+            "output_1": "db_res6_out00",
+            "output_2": "db_res7_out00"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_upblock01",
+      "models": [
+        {
+          "name": "upblock01",
+          "asset": "unet_ub01_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "hidden_states": "in_hidden_u01",
+            "temb": "emb",
+            "encoder_hidden_states": "encoder_hidden_states",
+            "res_hidden_states_0": "db_res6",
+            "res_hidden_states_1": "db_res7"
+          },
+          "outputs": {
+            "output_0": "out_hidden_01",
+            "output_1": "db_res6_out01"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_ublocks_2",
+      "models": [
+        {
+          "name": "upblock02",
+          "asset": "unet_ub02_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "hidden_states": "in_hidden_02",
+            "temb": "emb",
+            "encoder_hidden_states": "encoder_hidden_states",
+            "res_hidden_states_0": "db_res6"
+          },
+          "outputs": {
+            "output_0": "up_hidden0"
+          }
+        },
+        {
+          "name": "upblock1",
+          "asset": "unet_ub1_noIO_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "sample": "up_hidden0",
+            "temb": "emb",
+            "encoder_hidden_states": "encoder_hidden_states",
+            "down_block_res_samples_0": "db_res0",
+            "down_block_res_samples_1": "db_res1",
+            "down_block_res_samples_2": "db_res2",
+            "down_block_res_samples_3": "db_res3",
+            "down_block_res_samples_4": "db_res4",
+            "down_block_res_samples_5": "db_res5"
+          },
+          "outputs": {
+            "output_0": "latent_sample"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unet_out_conv",
+      "models": [
+        {
+          "name": "outConv",
+          "asset": "unet_out_conv_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "latent_sample": "latent_sample"
+          },
+          "outputs": {
+            "output_0": "noise_pred"
+          }
+        }
+      ]
+    },
+    {
+      "name": "vae",
+      "models": [
+        {
+          "name": "vae_decoder",
+          "asset": "vae_decoder_1024_128_w8a16_8Gen2_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "z": "latents"
+          },
+          "outputs": {
+            "output_0": "decoded"
+          }
+        }
+      ]
+    }
+  ]
+}

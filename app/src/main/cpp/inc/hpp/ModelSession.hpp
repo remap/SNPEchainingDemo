@@ -15,6 +15,9 @@
 
 #include "hpp/TensorTypes.hpp"
 #include "zdl/DlSystem/RuntimeList.hpp"
+#include "DlSystem/TensorMap.hpp"
+#include "DlSystem/ITensorFactory.hpp"
+#include "DlSystem/TensorShape.hpp"
 
 class ModelSession {
 public:
@@ -31,11 +34,14 @@ public:
 //        std::shared_ptr<MMapAsset> asset;
 //    };
 
+    ModelSession(const std::unordered_map<std::string, DType>& inputHints = {}): inputTypeHints_(inputHints) {}
+
     // Factory: takes a DLC buffer
     static std::unique_ptr<ModelSession> Create(const uint8_t* dlc, size_t bytes,
                                                 std::shared_ptr<void> dlcOwner,
                                                 const Options& opt,
-                                                std::string* buildLog /*optional*/);
+                                                std::string* buildLog /*optional*/,
+                                                std::unordered_map<std::string, std::string> inputEncodings);
 
     void reCreate(std::string* buildLog);
 
@@ -52,7 +58,8 @@ public:
     // Returns elapsed ms in *elapsedMs if not null.
     bool execute(const std::unordered_map<std::string, const void*>& inputPtrs,
                  const std::unordered_map<std::string, void*>& outputPtrs,
-                 int64_t* elapsedMs) const;
+                 int64_t* elapsedMs
+                 /*bool inputsAreInt32*/) const;
 
 private:
     ModelSession() = default;
@@ -69,6 +76,8 @@ private:
     // IO metadata (float32 assumed at boundaries)
     std::vector<TensorInfo> inputs_;
     std::vector<TensorInfo> outputs_;
+
+    std::unordered_map<std::string, DType> inputTypeHints_;
 
     // Helper to probe IO and fill inputs_/outputs_
     void captureIO_();

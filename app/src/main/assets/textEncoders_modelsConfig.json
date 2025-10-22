@@ -1,0 +1,28 @@
+{
+  "baseDir": "/sdcard/Android/data/com.example.snpechainingdemo/files/dlc",
+  "models": [
+    {
+      "name": "text_encoder",
+      "asset": "text_encoder_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "input_ids": "input_ids_1"
+      },
+      "outputs": {
+        "output_0": "prompt_embeds_1"
+      }
+    },
+    {
+      "name": "text_encoder_2",
+      "asset": "text_encoder_2_8Gen2_prepared.dlc",
+      "runtime": "D",
+      "inputs": {
+        "input_ids": "input_ids_2"
+      },
+      "outputs": {
+        "output_0": "pooled_embeds",
+        "output_1": "prompt_embeds_2"
+      }
+    }
+  ]
+}
