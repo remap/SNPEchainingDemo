@@ -161,7 +161,27 @@ public:
  * @return The rpc polling time
  */
   DspPerfRpcPollingTime_t getRpcPollingTime() const{
-    return static_cast<DspPerfSleepLatency_t>(Snpe_SNPEPerfProfile_GetDspRpcPollingTime(handle()));
+    return static_cast<DspPerfRpcPollingTime_t>(Snpe_SNPEPerfProfile_GetDspRpcPollingTime(handle()));
+  }
+
+/**
+ * @brief Set adaptive polling time.
+ *
+ * @param adaptivePollingTime Rpc polling time
+ *
+ * @return true if the parameters were successfully set
+ */
+  bool setAdaptivePollingTime(DspPerfAdaptivePollingTime_t value){
+    return SNPE_SUCCESS == Snpe_SNPEPerfProfile_SetAdaptivePollingTime(handle(), static_cast<Snpe_DspPerf_AdaptivePollingTime_t>(value));
+  }
+
+/**
+ * @brief Get adaptive polling time.
+ *
+ * @return The adaptive polling time
+ */
+  DspPerfAdaptivePollingTime_t getAdaptivePollingTime() const{
+    return static_cast<DspPerfAdaptivePollingTime_t>(Snpe_SNPEPerfProfile_GetDspAdaptivePollingTime(handle()));
   }
 
 /**

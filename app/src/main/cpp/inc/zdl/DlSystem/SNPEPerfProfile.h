@@ -202,6 +202,29 @@ SNPE_API
 Snpe_DspPerf_RpcPollingTime_t Snpe_SNPEPerfProfile_GetDspRpcPollingTime(Snpe_SNPEPerfProfile_Handle_t perfProfileHandle);
 
 /**
+ * @brief Set adaptive polling time for perfProfileHandle
+ *
+ * @param perfProfileHandle Current SNPEPerfProfile handle to be updated
+ * @param adaptivePollingTime Adaptive polling time
+ *
+ * @return SNPE_SUCCESS if the parameters were successfully set
+ */
+
+SNPE_API
+Snpe_ErrorCode_t Snpe_SNPEPerfProfile_SetAdaptivePollingTime(Snpe_SNPEPerfProfile_Handle_t perfProfileHandle,
+                                                             Snpe_DspPerf_AdaptivePollingTime_t adaptivePollingTime);
+
+/**
+ * @brief Get adaptive polling time for perfProfileHandle
+ *
+ * @param perfProfileHandle Current SNPEPerfProfile handle
+ *
+ * @return The adaptive polling time for the perfProfileHandle
+ */
+SNPE_API
+Snpe_DspPerf_AdaptivePollingTime_t Snpe_SNPEPerfProfile_GetDspAdaptivePollingTime(Snpe_SNPEPerfProfile_Handle_t perfProfileHandle);
+
+/**
  * @brief Set hysteresisTime time for perfProfileHandle
  *
  * @param perfProfileHandle Current SNPEPerfProfile handle to be updated

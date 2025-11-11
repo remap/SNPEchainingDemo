@@ -437,6 +437,8 @@ typedef uint32_t Snpe_DspPerf_SleepDisable_t;
 
 typedef uint32_t Snpe_DspPerf_RpcPollingTime_t;
 
+typedef uint32_t Snpe_DspPerf_AdaptivePollingTime_t;
+
 typedef uint32_t Snpe_DspPerf_HysteresisTime_t;
 
 typedef bool Snpe_DspPerf_AsyncVoteEnable_t;

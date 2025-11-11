@@ -318,8 +318,9 @@ static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager, jin
 
     std::string encoders_config_filename = "textEncoders_modelsConfig.json"; // change name as needed
 //    std::string allModels_config_filename = "allModelsConfig.json"; // change name as needed
-    std::string allModels_config_filename = "allModelsConfigNoIO.json"; // change name as needed
+//    std::string allModels_config_filename = "allModelsConfigNoIO.json"; // change name as needed
 //    std::string allModels_config_filename = "allModelsConfig8Elite.json"; // change name as needed
+    std::string allModels_config_filename = "allModelsConfigNewCalib8Elite.json"; // change name as needed
     std::string log;
     bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
     AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);

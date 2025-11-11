@@ -378,6 +378,25 @@ Snpe_ErrorCode_t Snpe_SNPEBuilder_SetCpuFixedPointMode(
       Snpe_SNPEBuilder_Handle_t snpeBuilderHandle, bool cpuFxpMode);
 
 /**
+ * @brief Sets the accelerated init mode for HTP runtime for execution from an offline prepared cache.
+ *        If DLC without HTP cache is called with this mode, the program terminates
+ *        Init acceleration requires cache prepared with current SDK; older cache falls back to regular initialization.
+ *        If an offline prepared model with an invalid cache is discovered, the program continues
+ *        normal execution with a warning
+ *
+ * @param[in] snpeBuilderHandle Handle to access the SNPEBuilder object
+ *
+ * @param[in] acceleratedInit Boolean If set to true, enables HTP Init accelerate.
+ *
+ * @note Init time is reduced by using more resources. This would cause execution to slow down if executes are done
+ *       concurrently with initialization. This should only be used for an offline prepared DLC, for DSP (HTP) runtime.
+ *       Default value is false.
+ */
+SNPE_API
+Snpe_ErrorCode_t Snpe_SNPEBuilder_SetAcceleratedInit(
+      Snpe_SNPEBuilder_Handle_t snpeBuilderHandle, bool acceleratedInit);
+
+/**
  * @brief Sets memoryLimitHint for DSP
  *        Based on the memory limit provided graphs will be switched from cache blob when execute is invoked.
  *

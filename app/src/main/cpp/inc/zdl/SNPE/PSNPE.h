@@ -256,7 +256,7 @@ Snpe_BuildConfig_Handle_t Snpe_BuildConfig_Create();
 /**
  * @brief Release the object of snpe build config
  *
- * @param[in] buildConfigHandle Handle to access the object of snpe buid config
+ * @param[in] buildConfigHandle Handle to access the object of snpe build config
  *
  * @return The error of build config result
  */
@@ -266,7 +266,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_Delete(Snpe_BuildConfig_Handle_t buildConfigHa
 /**
  * @brief Get the mode of build snpe object, serial or parallel
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The value of Snpe_PSNPE_BuildMode_t
  */
@@ -276,7 +276,7 @@ Snpe_PSNPE_BuildMode_t Snpe_BuildConfig_GetBuildMode(Snpe_BuildConfig_Handle_t b
 /**
  * @brief Set the mode of build snpe object, serial or parallel
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] buildMode A typedef of Snpe_PSNPE_BuildMode_t
  *
@@ -288,7 +288,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetBuildMode(Snpe_BuildConfig_Handle_t bcHandl
 /**
  * @brief Set the dlc model
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] dlcHandle A handle of snpe DLC container
  *
@@ -300,7 +300,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetContainer(Snpe_BuildConfig_Handle_t bcHandl
 /**
  * @brief Get dlc container in snpe build config
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The reference handle of DLC container
  */
@@ -310,7 +310,7 @@ Snpe_DlContainer_Handle_t Snpe_BuildConfig_GetContainer_Ref(Snpe_BuildConfig_Han
 /**
  * @brief Set output buffer names in snpe build config
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] slHandle A handle of the output layer name list
  *
@@ -322,7 +322,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetOutputBufferNames(Snpe_BuildConfig_Handle_t
 /**
  * @brief Get output buffer names in snpe build config
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The reference handle of output buffer name list.
  */
@@ -332,7 +332,7 @@ Snpe_StringList_Handle_t Snpe_BuildConfig_GetOutputBufferNames_Ref(Snpe_BuildCon
 /**
  * @brief Set output buffer names in snpe build config
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] slHandle List of tensor names to output. An empty list will result in producing output for the final output tensor of the model. The list will be copied
  *
@@ -344,7 +344,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetOutputTensors(Snpe_BuildConfig_Handle_t bcH
 /**
  * @brief Get output tensors in snpe build config
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The reference handle of output tensor list
  */
@@ -354,7 +354,7 @@ Snpe_StringList_Handle_t Snpe_BuildConfig_GetOutputTensors_Ref(Snpe_BuildConfig_
 /**
  * @brief Set runtime config list for snpe buildConfig
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] rclHandle Handle to access the object of runtime config list
  *
@@ -366,7 +366,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetRuntimeConfigList(Snpe_BuildConfig_Handle_t
 /**
  * @brief Get runtime config list for snpe buildConfig
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The reference handle of runtime config list
  */
@@ -376,7 +376,7 @@ Snpe_RuntimeConfigList_Handle_t Snpe_BuildConfig_GetRuntimeConfigList_Ref(Snpe_B
 /**
  * @brief Get input thread number of input data for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The number of input thread
  */
@@ -386,7 +386,7 @@ size_t Snpe_BuildConfig_GetInputThreadNumbers(Snpe_BuildConfig_Handle_t bcHandle
 /**
  * @brief Set input thread number of input data for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] threadNumbers The number of input thread for input-output async mode
  *
@@ -398,7 +398,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetInputThreadNumbers(Snpe_BuildConfig_Handle_
 /**
  * @brief Get output thread number of output data for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The number of output thread
  */
@@ -408,7 +408,7 @@ size_t Snpe_BuildConfig_GetOutputThreadNumbers(Snpe_BuildConfig_Handle_t bcHandl
 /**
  * @brief Set output thread number of output data for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] threadNumbers The number of output thread for input-output async mode
  *
@@ -420,7 +420,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetOutputThreadNumbers(Snpe_BuildConfig_Handle
 /**
  * @brief Set output callback for output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] callbackFunc The ouutput callback function for output async mode
  *
@@ -432,7 +432,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetOutputCallback(Snpe_BuildConfig_Handle_t bc
 /**
  * @brief Set the id of output callback function for output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] id The id of output callback function
  *
@@ -444,7 +444,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetOutputCallbackID(Snpe_BuildConfig_Handle_t 
 /**
  * @brief Set the inside output callback handle  to NULL for output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The result error message
  */
@@ -454,7 +454,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_ClearOutputCallback(Snpe_BuildConfig_Handle_t 
 /**
  * @brief Set output callback for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] callbackFunc The output callback function for input-output async mode
  *
@@ -467,7 +467,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetInputOutputCallback(Snpe_BuildConfig_Handle
 /**
  * @brief Set the id of output callback function for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] id The id of output callback function for input-output async mode
  *
@@ -479,7 +479,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetInputOutputCallbackID(Snpe_BuildConfig_Hand
 /**
  * @brief Set the inside output callback handle to NULL for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The result error message
  */
@@ -489,7 +489,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_ClearInputOutputCallback(Snpe_BuildConfig_Hand
 /**
  * @brief Set input callback for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] callbackFunc The input callback function for input-output async mode
  *
@@ -505,7 +505,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetInputOutputInputCallback(Snpe_BuildConfig_H
 /**
  * @brief Set the id of input callback function for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] id The id of input callback function for input-output async mode
  *
@@ -517,7 +517,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetInputOutputInputCallbackID(Snpe_BuildConfig
 /**
  * @brief Set the inside input callback handle to NULL for input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The result error message
  */
@@ -527,7 +527,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_ClearInputOutputInputCallback(Snpe_BuildConfig
 /**
  * @brief Set the input and output transmission mode including sync mode, output async mode and input-output async mode, defult is sync mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] iotMode The typedef of Snpe_PSNPE_InputOutputTransmissionMode_t
  *
@@ -540,7 +540,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetInputOutputTransmissionMode(Snpe_BuildConfi
 /**
  * @brief Get the input and output transmission mode including sync mode, output async mode and input-output async mode
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The typedef of Snpe_PSNPE_InputOutputTransmissionMode_t
  */
@@ -550,7 +550,7 @@ Snpe_PSNPE_InputOutputTransmissionMode_t Snpe_BuildConfig_GetInputOutputTransmis
 /**
  * @brief Set the profiling level for PSNPE build config, default is SNPE_PROFILING_LEVEL_OFF
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] profilingLevel The typedef of Snpe_ProfilingLevel_t
  *
@@ -562,7 +562,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetProfilingLevel(Snpe_BuildConfig_Handle_t bc
 /**
  * @brief Get the profiling level for PSNPE build config
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The typedef of Snpe_ProfilingLevel_t
  */
@@ -572,7 +572,7 @@ Snpe_ProfilingLevel_t Snpe_BuildConfig_GetProfilingLevel(Snpe_BuildConfig_Handle
 /**
  * @brief To be deprecated, set the encode value when you want to divide one image into 2 or 4 parts to run, default is 0 which means the input don't need dividing.
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] encode0  The uint64 value of encode0
  *
@@ -586,7 +586,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetEncode(Snpe_BuildConfig_Handle_t bcHandle, 
 /**
  * @brief To be deprecated, set the encode0 value for snpe build config which is a special feature used in SM8250
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] encode0  The uint64 value of encode0
  *
@@ -598,7 +598,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetEncode0(Snpe_BuildConfig_Handle_t bcHandle,
 /**
  * @brief To be deprecated, set the encode1 value for snpe build config which is a special feature used in SM8250
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] encode1  The uint64 value of encode1
  *
@@ -610,7 +610,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetEncode1(Snpe_BuildConfig_Handle_t bcHandle,
 /**
  * @brief To be deprecated, get the encode0 and encode1 value for snpe build config which is a special feature used in SM8250
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The uint64 value of encode
  */
@@ -620,7 +620,7 @@ uint64_t* Snpe_BuildConfig_GetEncode(Snpe_BuildConfig_Handle_t bcHandle);
 /**
  * @brief To be deprecated, get the encode0 value for snpe build config which is a special feature used in SM8250
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The uint64 value of encode0
  */
@@ -630,7 +630,7 @@ uint64_t Snpe_BuildConfig_GetEncode0(Snpe_BuildConfig_Handle_t bcHandle);
 /**
  * @brief To be deprecated, get the encode1 value for snpe build config which is a special feature used in SM8250
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The uint64 value of encode1
  */
@@ -640,7 +640,7 @@ uint64_t Snpe_BuildConfig_GetEncode1(Snpe_BuildConfig_Handle_t bcHandle);
 /**
  * @brief Set true or false for enabling init cache for snpe build config, enabling init cache = 1
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] enableInitCache  True for enabing init cache
  *
@@ -652,7 +652,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetEnableInitCache(Snpe_BuildConfig_Handle_t b
 /**
  * @brief Get the satus of enabling init cache for snpe build config, enabling init cache = 1.
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] enableInitCache  True for enabing init cache
  *
@@ -664,7 +664,7 @@ int Snpe_BuildConfig_GetEnableInitCache(Snpe_BuildConfig_Handle_t bcHandle);
 /**
  * @brief Handle needed to access the platformConfig.
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] platformOptions  Options as a const char*
  *
@@ -673,10 +673,37 @@ int Snpe_BuildConfig_GetEnableInitCache(Snpe_BuildConfig_Handle_t bcHandle);
 SNPE_API
 Snpe_ErrorCode_t Snpe_BuildConfig_SetPlatformOptions(Snpe_BuildConfig_Handle_t bcHandle, const char* platformOptions);
 
+ /**
+ * @brief Sets the accelerated init mode for HTP runtime for execution from an offline prepared cache.
+ *        If DLC without HTP cache is called with this mode, the program terminates.
+ *        Init acceleration requires cache prepared with current SDK; older cache falls back to regular initialization.
+ *        If an offline prepared model with an invalid cache is discovered, the program continues
+ *        normal execution with a warning
+ *
+ * @param[in]  bcHandle Handle to access the object of snpe build config
+ *
+ * @param[in] acceleratedInit Boolean If set to true, enables HTP Init accelerate.
+ *
+ * @note Init time is reduced by using more resources. This would cause execution to slow down if executes are done
+ *       concurrently with initialization. This should only be used for an offline prepared DLC, for DSP (HTP) runtime. Default value is false.
+ */
+SNPE_API
+Snpe_ErrorCode_t Snpe_BuildConfig_SetAcceleratedInit(Snpe_BuildConfig_Handle_t bcHandle, bool acceleratedInit);
+
+/**
+ * @brief To return the bool value of acceleratedInit of build config
+ *
+ * @param[in] bcHandle Handle to access the object of snpe build config
+ *
+ * @return The bool value of acceleratedInit
+ */
+SNPE_API
+int Snpe_BuildConfig_GetAcceleratedInit(Snpe_BuildConfig_Handle_t bcHandle);
+
 /**
  * @brief Get the optional platform features for snpe build config
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return Options as a const char*
  */
@@ -686,7 +713,7 @@ const char* Snpe_BuildConfig_GetPlatformOptions(Snpe_BuildConfig_Handle_t bcHand
 /**
  * @brief Set the path directory of output diag log you want to save
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @param[in] diaglogOutputDir The string directory
  *
@@ -698,7 +725,7 @@ Snpe_ErrorCode_t Snpe_BuildConfig_SetDiaglogOutputDir(Snpe_BuildConfig_Handle_t 
 /**
  * @brief Get the path of output diag log
  *
- * @param[in] bcHandle Handle to access the object of snpe buid config
+ * @param[in] bcHandle Handle to access the object of snpe build config
  *
  * @return The string directory
  */

@@ -11,6 +11,9 @@
           "inputs": {
             "input_ids": "input_ids_1"
           },
+          "inputEncodings": {
+            "input_ids": "int32"
+          },
           "outputs": {
             "output_0": "prompt_embeds_1"
           }
@@ -21,6 +24,9 @@
           "runtime": "D",
           "inputs": {
             "input_ids": "input_ids_2"
+          },
+          "inputEncodings": {
+            "input_ids": "int32"
           },
           "outputs": {
             "output_0": "pooled_embeds",
@@ -51,7 +57,7 @@
       "models": [
         {
           "name": "unet_aug_emb_net",
-          "asset": "unet_aug_emb_net_8Elite_prepared.dlc",
+          "asset": "unet_aug_emb_net_fp32_8Elite_prepared.dlc",
           "runtime": "D",
           "inputs": {
             "time_ids": "time_ids",

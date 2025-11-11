@@ -226,6 +226,7 @@ struct BuildConfig final {
   zdl::DlSystem::ProfilingLevel_t profilingLevel = zdl::DlSystem::ProfilingLevel_t::OFF;///< Specify profiling level for Diaglog
   uint64_t encode[2] = {0, 0};
   bool enableInitCache = false;
+  bool acceleratedInit = false;
   std::string platformOptions;
   std::string diaglogOutputDir = "./diaglogs/"; ///< Specify a diaglog output directory to save the generated Diaglog files.
 
@@ -381,6 +382,7 @@ public:
     Snpe_BuildConfig_SetProfilingLevel(bcHandle, static_cast<Snpe_ProfilingLevel_t>(buildConfig.profilingLevel));
     Snpe_BuildConfig_SetEncode(bcHandle, buildConfig.encode[0], buildConfig.encode[1]);
     Snpe_BuildConfig_SetEnableInitCache(bcHandle, buildConfig.enableInitCache);
+    Snpe_BuildConfig_SetAcceleratedInit(bcHandle, buildConfig.acceleratedInit);
     Snpe_BuildConfig_SetPlatformOptions(bcHandle, buildConfig.platformOptions.c_str());
     Snpe_BuildConfig_SetDiaglogOutputDir(bcHandle, buildConfig.diaglogOutputDir.c_str());
 

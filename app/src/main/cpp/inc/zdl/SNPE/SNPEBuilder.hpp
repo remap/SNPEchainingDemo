@@ -315,6 +315,25 @@ public:
   }
 
 /**
+* @brief Sets the accelerated init mode for HTP runtime for execution from an offline prepared cache.
+ *        If DLC without HTP cache is called with this mode, the program terminates
+ *        Init acceleration requires cache prepared with current SDK; older cache falls back to regular initialization.
+ *        If an offline prepared model with an invalid cache is discovered, the program continues
+ *        normal execution with a warning
+ *
+ * @param[in] acceleratedInit Boolean If set to true, enables HTP init accelerate.
+ *
+ * @note Init time is reduced by using more resources. This would cause execution to slow down if executes are done
+ *       concurrently with initialization. This should only be used for an offline prepared DLC, for DSP (HTP) runtime.
+ *       Default value is false.
+ * @return The current instance of SNPEBuilder.
+ */
+  SNPEBuilder& setAcceleratedInit(bool acceleratedInit){
+    Snpe_SNPEBuilder_SetAcceleratedInit(handle(), acceleratedInit);
+    return *this;
+  }
+
+/**
  * @brief Sets memoryLimitHint for DSP
  *        Based on the memory limit provided graphs will be switched from cache blob when execute is invoked.
  *

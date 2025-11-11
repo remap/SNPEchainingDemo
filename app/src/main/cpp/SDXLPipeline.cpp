@@ -181,6 +181,10 @@ bool SDXLPipeline::init_networks(char runtime_hint) {
                                        *unet_.unet_blocks,
                                        runtime_hint,
                                        reset_sessions);
+    LOGW("RIGHT AFTER BUILD");
+    for (const auto&  n : unet_.unet_blocks->getNodes()) {
+        LOGW("%s", n.name.c_str());
+    }
 
     LOGI("Building unet_upblock00");
     pipe = findPipe(mp_cfg, "unet_upblock00");
@@ -214,6 +218,10 @@ bool SDXLPipeline::init_networks(char runtime_hint) {
                                        *unet_.unet_blocks_2,
                                        runtime_hint,
                                        reset_sessions);
+    LOGW("RIGHT AFTER BUILD");
+    for (const auto&  n : unet_.unet_blocks_2->getNodes()) {
+        LOGW("%s", n.name.c_str());
+    }
 
     LOGI("Building unet_out_conv");
     pipe = findPipe(mp_cfg, "unet_out_conv");
@@ -323,15 +331,21 @@ std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
     auto pooled_pe_tinfo = ws_.tinfoOf(kPromptPool);
     bool read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pe1.bin", prompt_embeds1, pe1_tinfo->bytes());
     if (read_from_file) {
-        LOGI("[Prompt Embeddings 1:] Read latent from file!");
+        LOGI("[Prompt Embeddings 1:] Read from file!");
+    } else {
+        LOGW("[Prompt Embeddings 1:] Unable to read from file!");
     }
-    read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pe1.bin", prompt_embeds2, pe2_tinfo->bytes());
+    read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pe2.bin", prompt_embeds2, pe2_tinfo->bytes());
     if (read_from_file) {
-        LOGI("[Prompt Embeddings 2:] Read latent from file!");
+        LOGI("[Prompt Embeddings 2:] Read from file!");
+    } else {
+        LOGW("[Prompt Embeddings 2:] Unable to read from file!");
     }
     read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pooled_pe.bin", pooled_prompt_embeds, pooled_pe_tinfo->bytes());
     if (read_from_file) {
-        LOGI("[Pooled Prompt Embeddings:] Read latent from file!");
+        LOGI("[Pooled Prompt Embeddings:] Read from file!");
+    } else {
+        LOGW("[Pooled Prompt Embeddings:] Unable to read from file!");
     }
 
     const size_t BS = static_cast<size_t>(B_) * static_cast<size_t>(S_);
@@ -350,8 +364,8 @@ std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
         LOGE("run_encoders: cannot alloc '%s': %s", kOut, emsg.c_str());
         return execution_summary + "\nalloc prompt_embeds failed";
     }
-//    auto* prompt_embeds = static_cast<float*>(ws_.data(kOut));
-    auto* prompt_embeds = static_cast<float*>(ws_.data("encoder_hidden_states"));
+    auto* prompt_embeds = static_cast<float*>(ws_.data(kOut));
+//    auto* prompt_embeds = static_cast<float*>(ws_.data("encoder_hidden_states"));
     // concat with two memcpys per (b,s) row
     for (size_t i = 0; i < BS; ++i) {
         const float* src1 = prompt_embeds1 + i * D1;
@@ -362,10 +376,10 @@ std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
     }
 
     // alias the prompt_embeds tensor into encoder_hidden_states (expected by later networks)
-//    const char* prompt_embeddings_tensor_name = "encoder_hidden_states";
-//    if (ws_.data(kOut)) {
-//        ws_.alias(prompt_embeddings_tensor_name, kOut);
-//    }
+    const char* prompt_embeddings_tensor_name = "encoder_hidden_states";
+    if (ws_.data(kOut)) {
+        ws_.alias(prompt_embeddings_tensor_name, kOut);
+    }
 
     // Optional sanity logs (first few floats)
     {
@@ -662,6 +676,10 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     // 5. down-, mid-, and up-blocks: (sample, temb, encoder_hidden_states) ==> one final output
     LOGI("Running Unet cross-attention blocks...");
     const auto& nodes = unet_.unet_blocks->getNodes();
+    LOGW("UNET UBLOCK HAS NODES:");
+    for (const auto& n : nodes) {
+        LOGW("%s", n.name.c_str());
+    }
     for (const auto& n : nodes[0].session.get()->inputs()) {
         const auto& wsName = nodes[0].inputBinding.at(n.name);
         if (!ws_.data(wsName)) {
@@ -672,6 +690,8 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     unet_execution_summary += runGraph(*unet_.unet_blocks, true);
 
     LOGW("NODE NAMES ===========");
+    const std::string nominal_output_name = "out_sample"; // "output_0";
+//    const std::string nominal_output_name = "output_0";
     for (const auto& node : unet_.unet_blocks_2->getNodes()) {
         LOGW("%s", node.name.c_str());
     }
@@ -679,7 +699,7 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     auto& tinfos00 = unet_.unet_upblock00->last().session.get()->outputs();
     LOGW("HIDDEN STATES OF UPBLOCK00 DIMENSION:");
     for (auto& tnfo : tinfos00) {
-        if (tnfo.name == "output_0") {
+        if (tnfo.name == nominal_output_name) {
             for (auto& d : tnfo.dims) {
                 LOGW("%lu", d);
             }
@@ -689,7 +709,7 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     const auto& tinfos01 = unet_.unet_upblock01->last().session.get()->outputs();
     LOGW("HIDDEN STATES OF UPBLOCK01 DIMENSION:");
     for (auto& tnfo : tinfos01) {
-        if (tnfo.name == "output_0") {
+        if (tnfo.name == nominal_output_name) {
             for (auto& d : tnfo.dims) {
                 LOGW("%lu", d);
             }
@@ -713,15 +733,15 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     LOGI("Transposing...");
 //    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
     // transpose the output of upblock00 to input upblock01 -----------------------------------
-    const auto& out_hidden_00_wsName = unet_.unet_upblock00->last().outputBinding.at("output_0");
+    const auto& out_hidden_00_wsName = unet_.unet_upblock00->last().outputBinding.at(nominal_output_name);
     auto* out_hidden_00 = static_cast<float*>(ws_.data(out_hidden_00_wsName));
     const auto& out_hidden_00_tinfo = ws_.tinfoOf(out_hidden_00_wsName);
-    LOGI("out hidden 00 numel: %lu", out_hidden_00_tinfo->numel());
+    LOGI("out hidden 00 (%s) numel: %lu", out_hidden_00_wsName.c_str(), out_hidden_00_tinfo->numel());
 
-    const auto& in_hidden_01_wsName = unet_.unet_upblock00->last().inputBinding.at("hidden_states");
+    const auto& in_hidden_01_wsName = unet_.unet_upblock01->last().inputBinding.at("hidden_states");
     auto* in_hidden_01 = static_cast<float*>(ws_.data(in_hidden_01_wsName));
     const auto& in_hidden_01_tinfo = ws_.tinfoOf(in_hidden_01_wsName);
-    LOGI("in hidden 01 numel: %lu", in_hidden_01_tinfo->numel());
+    LOGI("in hidden 01 (%s) numel: %lu", in_hidden_01_wsName.c_str(), in_hidden_01_tinfo->numel());
 
     nhwc_to_nchw(in_hidden_01, out_hidden_00, 1, 32, 32, 1280);
 
@@ -731,11 +751,13 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     LOGI("Transposing...");
 //    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
     // transpose the output of upblock00 to input upblock01 -----------------------------------
-    const auto& out_hidden_01_wsName = unet_.unet_upblock00->last().outputBinding.at("output_0");
+    const auto& out_hidden_01_wsName = unet_.unet_upblock01->last().outputBinding.at(nominal_output_name);
     auto* out_hidden_01 = static_cast<float*>(ws_.data(out_hidden_01_wsName));
+    LOGI("out hidden 01 (%s)", out_hidden_01_wsName.c_str());
 
-    const auto& in_hidden_02_wsName = unet_.unet_upblock00->last().inputBinding.at("hidden_states");
+    const auto& in_hidden_02_wsName = unet_.unet_blocks_2->getNode("upblock02").inputBinding.at("hidden_states");
     auto* in_hidden_02 = static_cast<float*>(ws_.data(in_hidden_02_wsName));
+    LOGI("in hidden 02 (%s)", in_hidden_02_wsName.c_str());
 
     nhwc_to_nchw(in_hidden_02, out_hidden_01, 1, 32, 32, 1280);
 
@@ -755,7 +777,7 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     LOGI("Running Unet outConv...");
     unet_execution_summary += runGraph(*unet_.outConv, true);
 
-    LOGI("Finished running Unet!");
+    LOGI("Finished running Unet!\n %s", unet_execution_summary.c_str());
 }
 
 void SDXLPipeline::unet_wrapper(const float t) {
