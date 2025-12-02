@@ -26,7 +26,7 @@ public:
         zdl::DlSystem::PerformanceProfile_t perf =
                 zdl::DlSystem::PerformanceProfile_t::HIGH_PERFORMANCE;
         bool useUserSuppliedBuffers = true;
-        bool initCache = false;
+        bool initCache = true;
     };
 
 //    struct DlcBacking {
@@ -41,7 +41,8 @@ public:
                                                 std::shared_ptr<void> dlcOwner,
                                                 const Options& opt,
                                                 std::string* buildLog /*optional*/,
-                                                std::unordered_map<std::string, std::string> inputEncodings);
+                                                std::unordered_map<std::string, std::string> inputEncodings,
+                                                std::string dlc_name);
 
     void reCreate(std::string* buildLog);
 

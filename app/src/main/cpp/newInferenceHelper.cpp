@@ -132,8 +132,9 @@ std::string buildModelAndGraph(AAssetManager* mgr,
     if (g_modelDir.empty() and !cfg.baseDir.empty()) {
         g_modelDir = cfg.baseDir + "/";
     }
+    std::string full = g_modelDir + mc.asset;
     if (!g_modelDir.empty()) {
-        std::string full = g_modelDir + "/" + mc.asset;
+//        std::string full = g_modelDir + "/" + mc.asset;
         LOGI("Trying DLC from file: %s", full.c_str());
         if (mappedFile.openPath(full.c_str(), &emsg)) {
             mappedOk = true;
@@ -170,7 +171,8 @@ std::string buildModelAndGraph(AAssetManager* mgr,
     std::string buildLog;
     auto session = ModelSession::Create(static_cast<const uint8_t *>(dlcPtr),
                                         dlcSize, owner, opt, &buildLog,
-                                        mc.inputEncodings);
+                                        mc.inputEncodings,
+                                        full); //g_modelDir);
     totalBuildMs += msSince(tBuild0);
     log += "[Build " + mc.name + "] " + buildLog;
     LOGI("Session for model %s created", mc.asset.c_str());
@@ -323,7 +325,8 @@ std::string buildArbitraryChain(AAssetManager* mgr,
 
     {
         std::string semsg;
-        if (!seedRequiredInputs(cfg, ws, mgr, &semsg)) {
+        if (!seedAllTensors(cfg, ws, mgr, &semsg)) {
+//        if (!seedRequiredInputs(cfg, ws, mgr, &semsg)) {
             return "Input seeding failed: " + semsg;
         }
     }
@@ -356,7 +359,8 @@ std::string buildArbitraryChainFromConfig(AAssetManager* mgr,
 
     {
         std::string semsg;
-        if (!seedRequiredInputs(cfg, ws, mgr, &semsg)) {
+        if (!seedAllTensors(cfg, ws, mgr, &semsg)) {
+//        if (!seedRequiredInputs(cfg, ws, mgr, &semsg)) {
             return "Input seeding failed: " + semsg;
         }
     }

@@ -50,5 +50,9 @@ bool seedRequiredInputs(const PipelineCfg& cfg,
                                TensorWorkspace& ws,
                                AAssetManager* mgr,
                                std::string* emsg);
+bool seedAllTensors(const PipelineCfg& cfg,
+                               TensorWorkspace& ws,
+                               AAssetManager* mgr,
+                               std::string* emsg);
 
 #endif //SNPECHAININGDEMO_INITTENSORSHELPER_H

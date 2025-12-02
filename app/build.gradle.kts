@@ -90,4 +90,7 @@ dependencies {
         // If missing, add a direct dependency:
         implementation("org.bytedeco:javacpp:1.5.9")
     }
+
+    implementation("io.getstream:photoview:1.0.3")
+    implementation("com.airbnb.android:lottie:6.3.0")
 }

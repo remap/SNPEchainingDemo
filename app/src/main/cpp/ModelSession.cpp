@@ -83,7 +83,8 @@ void ModelSession::reCreate(std::string* buildLog= nullptr) {
 std::unique_ptr<ModelSession> ModelSession::Create(const uint8_t* dlc, size_t bytes,
                      std::shared_ptr<void> dlcOwner,
                      const Options& opt, std::string* buildLog,
-                     std::unordered_map<std::string, std::string> inputEncodings) {
+                     std::unordered_map<std::string, std::string> inputEncodings,
+                     std::string dlc_name) {
 
 //    LOGI_MS("[ModelSession] 1");
     std::unordered_map<std::string, DType> inputEncodings_map;
@@ -111,6 +112,9 @@ std::unique_ptr<ModelSession> ModelSession::Create(const uint8_t* dlc, size_t by
     // Container
     auto t1 = clock::now();
     auto container = zdl::DlContainer::IDlContainer::open(dlc, bytes);
+    LOGI_MS("DLC NAME: %s", dlc_name.c_str());
+//    auto container = zdl::DlContainer::IDlContainer::open(dlc, bytes, dlc_name);
+//    auto container = zdl::DlContainer::IDlContainer::open(dlc_name);
     auto t2 = clock::now();
 //    LOGI_MS("DLContainer open time: %lld", std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count());
     if (!container) {
@@ -169,6 +173,7 @@ std::unique_ptr<ModelSession> ModelSession::Create(const uint8_t* dlc, size_t by
             .build();
     auto t_builder1 = clock::now();
     LOGI_MS("SNPE builder time: %lld", std::chrono::duration_cast<std::chrono::milliseconds>(t_builder1 - t_builder0).count());
+//    self->container_->save(dlc_name);
 
     if (!self->snpe_) {
         if (buildLog) *buildLog += "SNPE build failed\n";
@@ -212,7 +217,11 @@ void ModelSession::captureIO_() {
 //            t.elementBytes = (*attr)->getElementSize(); // stays 4
 //            t.dims.assign(shape.getDimensions(), shape.getDimensions() + shape.rank());
             t.dims.clear();
-            for (size_t i = 0; i < shape.rank(); ++i) t.dims.push_back(shape[i]);
+            LOGI_MS("%s tensor dims:", t.name.c_str());
+            for (size_t i = 0; i < shape.rank(); ++i) {
+                t.dims.push_back(shape[i]);
+                LOGI_MS("%lu", shape[i]);
+            }
 
             // Default to float32, then override from hints
             t.dtype = DType::F32;
@@ -239,7 +248,11 @@ void ModelSession::captureIO_() {
             t.elementBytes = 4; // float32
 //            t.dims.assign(shape.getDimensions(), shape.getDimensions() + shape.rank());
             t.dims.clear();
-            for (size_t i = 0; i < shape.rank(); ++i) t.dims.push_back(shape[i]);
+            LOGI_MS("%s tensor dims:", t.name.c_str());
+            for (size_t i = 0; i < shape.rank(); ++i) {
+                t.dims.push_back(shape[i]);
+                LOGI_MS("%lu", shape[i]);
+            }
 
 //            t.elementBytes = (*attr)->getElementSize(); // often 4
             t.dtype = DType::F32; // typical UNet/VAE outputs
@@ -367,10 +380,11 @@ bool ModelSession::execute(const std::unordered_map<std::string, const void*>& i
             // Choose encoding:
             UserBufferEncoding *encRaw = nullptr;
             if (t.dtype == DType::F32) {
-                encKeepAlive.emplace_back(new UserBufferEncodingFloatN());
+                encKeepAlive.emplace_back(new UserBufferEncodingFloatN(32));
                 encRaw = encKeepAlive.back().get();
             } else if (t.dtype == DType::I32) {
-                encKeepAlive.emplace_back(new UserBufferEncodingIntN());
+                LOGI_MS("Creating INTEGER buffer for %s", t.name.c_str());
+                encKeepAlive.emplace_back(new UserBufferEncodingIntN(32));
 //                encRaw = nullptr; // int32: pass no encoding (raw)
                 encRaw = encKeepAlive.back().get();
             } else {

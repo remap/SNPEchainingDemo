@@ -90,7 +90,8 @@ static bool seedOneTensor(TensorWorkspace& ws,
                           AAssetManager* mgr,
                           std::string* emsg) {
     void* ptr = ws.data(wsName);
-    size_t bytes = ws.sizeOf(wsName);
+//    size_t bytes = ws.sizeOf(wsName);
+    size_t bytes = ws.tinfoOf(wsName)->bytes();
     if (!ptr || bytes == 0) {
         if (emsg) *emsg = "Workspace tensor '" + wsName + "' missing or size=0";
         return false;
@@ -131,6 +132,42 @@ bool seedRequiredInputs(const PipelineCfg& cfg,
                                AAssetManager* mgr,
                                std::string* emsg) {
     auto roots = computeGraphRoots(cfg);
+    for (auto& wsName : roots) {
+        const InitSpec* spec = nullptr;
+        auto it = cfg.init.find(wsName);
+        if (it != cfg.init.end()) spec = &it->second;
+
+        if (!seedOneTensor(ws, wsName, spec, mgr, emsg)) {
+            LOGE("Seeding failed for '%s'%s",
+                 wsName.c_str(),
+                 (emsg && !emsg->empty()) ? (": " + *emsg).c_str() : "");
+            return false;
+        }
+        LOGI("Seeded root tensor '%s'%s",
+             wsName.c_str(),
+             spec ? "" : " (default zero)");
+    }
+    return true;
+}
+
+bool seedAllTensors(const PipelineCfg& cfg,
+                               TensorWorkspace& ws,
+                               AAssetManager* mgr,
+                               std::string* emsg) {
+
+
+    auto produced = collectProducedNames(cfg);
+    auto consumed = collectConsumedNames(cfg);
+
+    std::vector<std::string> roots;
+    roots.reserve(consumed.size()+produced.size());
+    for (auto& wname : consumed) {
+        roots.push_back(wname);
+    }
+    for (auto& wname : produced) {
+        if (!consumed.count(wname)) roots.push_back(wname);
+    }
+
     for (auto& wsName : roots) {
         const InitSpec* spec = nullptr;
         auto it = cfg.init.find(wsName);

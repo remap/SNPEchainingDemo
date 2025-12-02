@@ -17,7 +17,8 @@
 #include "hpp/MMapFile.h"
 #include "hpp/newInferenceHelper.hpp"
 #include "hpp/initTensorsHelper.h"
-#include "hpp/SDXLPipeline.h"
+//#include "hpp/SDXLPipeline.h"
+#include "hpp/SDXLPipelineGranular.h"
 
 #define LOG_TAG "SNPE_JNI"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -255,7 +256,8 @@ static jstring n_runGraphOld(JNIEnv* env, jclass) {
 
 static jstring n_runSDXL(JNIEnv* env, jclass, jobject assetManager, jintArray jIds1, jintArray jIds2) {
 
-    std::string config_filename = "textEncoders_modelsConfig.json"; // change name as needed
+//    std::string config_filename = "textEncoders_modelsConfig.json"; // change name as needed
+    std::string config_filename = "textEncoders_8Elite_modelsConfig.json"; // change name as needed
     std::string log;
     bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
     AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
@@ -290,9 +292,11 @@ static jstring n_runSDXL(JNIEnv* env, jclass, jobject assetManager, jintArray jI
     ws_sdxl.reset(new TensorWorkspace());
     gr_sdxl.reset(new GraphRunner(*ws_sdxl));
 
-    std::unique_ptr<SDXLPipeline> g_sdxl_pipe;
+//    std::unique_ptr<SDXLPipeline> g_sdxl_pipe;
+    std::unique_ptr<SDXLPipelineGranular> g_sdxl_pipe;
     LOGI("CREATING SDXL PIPE");
-    g_sdxl_pipe.reset(new SDXLPipeline(*ws_sdxl, *gr_sdxl, mgr, "", config_filename));
+//    g_sdxl_pipe.reset(new SDXLPipeline(*ws_sdxl, *gr_sdxl, mgr, "", config_filename));
+    g_sdxl_pipe.reset(new SDXLPipelineGranular(*ws_sdxl, *gr_sdxl, mgr, "", config_filename));
     LOGI("CREATED SDXL PIPE");
 
 //    log = buildArbitraryChain(mgr, g_modelDir, config_filename, *g_ws, *g_gr, runtimePref, reset_sessions);
@@ -314,13 +318,21 @@ static jstring n_runSDXL(JNIEnv* env, jclass, jobject assetManager, jintArray jI
    return env->NewStringUTF(execution_summary.c_str());
 }
 
-static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager, jintArray jIds1, jintArray jIds2, jboolean decode_only) {
+static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager,
+                                  jintArray jIds1, jintArray jIds2,
+                                  jboolean decode_only, jboolean init_only) {
 
-    std::string encoders_config_filename = "textEncoders_modelsConfig.json"; // change name as needed
+//    std::string encoders_config_filename = "textEncoders_modelsConfig.json"; // change name as needed
+    std::string encoders_config_filename = "textEncoders_8Elite_modelsConfig.json"; // change name as needed
+
 //    std::string allModels_config_filename = "allModelsConfig.json"; // change name as needed
 //    std::string allModels_config_filename = "allModelsConfigNoIO.json"; // change name as needed
 //    std::string allModels_config_filename = "allModelsConfig8Elite.json"; // change name as needed
-    std::string allModels_config_filename = "allModelsConfigNewCalib8Elite.json"; // change name as needed
+//    std::string allModels_config_filename = "allModelsConfigNewCalib8Elite.json"; // change name as needed
+
+//    std::string allModels_config_filename = "Granular_allModelsConfigNewCalib8Elite.json"; // change name as needed
+//    std::string allModels_config_filename = "C_Granular_allModelsConfigNewCalib8Elite.json"; // change name as needed
+    std::string allModels_config_filename = "FP32_Granular_allModelsConfigNewCalib8Elite.json"; // change name as needed
     std::string log;
     bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
     AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
@@ -358,9 +370,17 @@ static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager, jin
     ws_sdxl.reset(new TensorWorkspace());
     gr_sdxl_encoders.reset(new GraphRunner(*ws_sdxl));
 
-    std::unique_ptr<SDXLPipeline> g_sdxl_pipe;
+//    std::unique_ptr<SDXLPipeline> g_sdxl_pipe;
+    std::unique_ptr<SDXLPipelineGranular> g_sdxl_pipe;
     LOGI("CREATING SDXL PIPE");
-    g_sdxl_pipe.reset(new SDXLPipeline(*ws_sdxl,
+//    g_sdxl_pipe.reset(new SDXLPipeline(*ws_sdxl,
+//                                       mgr,
+//                                       "",
+//                                       *gr_sdxl_encoders,
+//                                       encoders_config_filename,
+//                                       allModels_config_filename
+//                                       ));
+    g_sdxl_pipe.reset(new SDXLPipelineGranular(*ws_sdxl,
                                        mgr,
                                        "",
                                        *gr_sdxl_encoders,
@@ -382,9 +402,11 @@ static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager, jin
         LOGI("Networks initialization successful!");
 //        g_sdxl_pipe->overall_pipeline(reinterpret_cast<int32_t*>(p1),
 //                                                      reinterpret_cast<int32_t*>(p2));
-        img = g_sdxl_pipe->overall_pipeline(reinterpret_cast<int32_t*>(p1),
-                                            reinterpret_cast<int32_t*>(p2),
-                                            decode_only);
+        if (!init_only) {
+            img = g_sdxl_pipe->overall_pipeline(reinterpret_cast<int32_t *>(p1),
+                                                reinterpret_cast<int32_t *>(p2),
+                                                decode_only);
+        }
     } else {
         LOGI("Networks initialization NOT successful!");
     }
@@ -710,7 +732,7 @@ static const JNINativeMethod kMethods[] = {
         {"setModelDirectory", "(Ljava/lang/String;)V", (void*)n_setModelDirectory},
         {"runSDXL", "(Landroid/content/res/AssetManager;[I[I)Ljava/lang/String;", (void*) n_runSDXL},
 //        {"runSDXLWhole", "(Landroid/content/res/AssetManager;[I[I)Ljava/lang/String;", (void*) n_runSDXLWhole},
-        {"runSDXLWhole", "(Landroid/content/res/AssetManager;[I[IZ)[F", (void*) n_runSDXLWhole},
+        {"runSDXLWhole", "(Landroid/content/res/AssetManager;[I[IZZ)[F", (void*) n_runSDXLWhole},
 };
 
 

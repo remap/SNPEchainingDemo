@@ -1,35 +1,34 @@
 //
-// Created by Chiheb Boussema on 30/9/25.
+// Created by Chiheb Boussema on 17/11/25.
 //
 
-#include "hpp/SDXLPipeline.h"
+#include "hpp/SDXLPipelineGranular.h"
 #include "hpp/newInferenceHelper.hpp"
 #include <unistd.h>
 #include <fstream>         // std::ifstream  (fixes “undefined template basic_ifstream”)
 
-#define LOG_TAG "SDXL_PIPELINE"
+#define LOG_TAG "SDXL_PIPELINE_GRANULAR"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
 
-void concat_last_dim(
-    float* __restrict dst,
-    const float* __restrict a, size_t rows, size_t D1,
-    const float* __restrict b, size_t D2)
-{
-    const size_t rowBytes1 = D1 * sizeof(float);
-    const size_t rowBytes2 = D2 * sizeof(float);
-    for (size_t r = 0; r < rows; ++r) {
-        std::memcpy(dst, a, rowBytes1);
-        std::memcpy(dst + D1, b, rowBytes2);
-        dst += (D1 + D2);
-        a   += D1;
-        b   += D2;
-    }
-}
+//void concat_last_dim(
+//    float* __restrict dst,
+//    const float* __restrict a, size_t rows, size_t D1,
+//    const float* __restrict b, size_t D2)
+//{
+//    const size_t rowBytes1 = D1 * sizeof(float);
+//    const size_t rowBytes2 = D2 * sizeof(float);
+//    for (size_t r = 0; r < rows; ++r) {
+//        std::memcpy(dst, a, rowBytes1);
+//        std::memcpy(dst + D1, b, rowBytes2);
+//        dst += (D1 + D2);
+//        a   += D1;
+//        b   += D2;
+//    }
+//}
 
-inline void logNumbers(const float* p, const TensorInfo& t, const std::string& wsName, const size_t& n=8, const char logLevel='i', const char* initLog=""
-) {
+inline void logNumbers(const float* p, const TensorInfo& t, const std::string& wsName, const size_t& n=8, const char logLevel='i', const char* initLog="") {
     std::string vals;
     size_t count = std::min<size_t>(n, t.numel());
     LOGW("TENSOR COUNT %zu", t.numel());
@@ -47,6 +46,26 @@ inline void logNumbers(const float* p, const TensorInfo& t, const std::string& w
              vals.c_str(), (n > count ? ", ..." : ""));
     }
 }
+
+inline void logNumbers(const int32_t* p, const TensorInfo& t, const std::string& wsName, const size_t& n=8, const char logLevel='i', const char* initLog="") {
+    std::string vals;
+    size_t count = std::min<size_t>(n, t.numel());
+    LOGW("TENSOR COUNT %zu", t.numel());
+    for (size_t i = 0; i < count; ++i) {
+        vals += std::to_string(p[i]);
+        if (i + 1 < n) vals += ", ";
+    }
+    if (logLevel=='w') {
+        LOGW("%s\n   Tensor '%s' (workspace='%s', %zu floats): [%s%s]",
+             initLog, t.name.c_str(), wsName.c_str(), n,
+             vals.c_str(), (n > count ? ", ..." : ""));
+    } else {
+        LOGI("%s\n   Tensor '%s' (workspace='%s', %zu floats): [%s%s]",
+             initLog, t.name.c_str(), wsName.c_str(), n,
+             vals.c_str(), (n > count ? ", ..." : ""));
+    }
+}
+
 
 inline bool readFileToBuffer(const std::string& path, void* dst, size_t bytes) {
     std::ifstream ifs(path, std::ios::binary);
@@ -99,9 +118,10 @@ inline PipelineCfg findPipe(const MultiPipelinesCfg& mpcfg, const std::string& n
     LOGE("Could not find pipeline %s", n.c_str());
     return out;
 }
-bool SDXLPipeline::init_networks(char runtime_hint) {
+
+bool SDXLPipelineGranular::init_networks(char runtime_hint) {
     std::string log;
-    bool reset_sessions = true;
+    bool reset_sessions = true; //true;
 
     // read config file
     std::string cfgText;
@@ -135,104 +155,47 @@ bool SDXLPipeline::init_networks(char runtime_hint) {
                                         ws_,
                                         enc_gr_,
                                         runtime_hint,
-                                        reset_sessions);
+                                        true);
 
     // build unet networks
-    LOGI("Building unet_time_embd");
-    pipe = findPipe(mp_cfg, "unet_time_embd");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_time_embd'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.time_embd,
-                                       runtime_hint,
-                                       reset_sessions);
-
-    LOGI("Building unet_aug_emb");
-    pipe = findPipe(mp_cfg, "unet_aug_emb");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_aug_emb'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.aug_emb,
-                                       runtime_hint,
-                                       reset_sessions);
-
-    LOGI("Building unet_in_conv");
-    pipe = findPipe(mp_cfg, "unet_in_conv");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_in_conv'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.inConv,
-                                       runtime_hint,
-                                       reset_sessions);
-
-    LOGI("Building unet_ublocks");
-    pipe = findPipe(mp_cfg, "unet_ublocks");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_ublocks'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.unet_blocks,
-                                       runtime_hint,
-                                       reset_sessions);
-    LOGW("RIGHT AFTER BUILD");
-    for (const auto&  n : unet_.unet_blocks->getNodes()) {
-        LOGW("%s", n.name.c_str());
+    std::vector<std::string> pipeline_names = {"unet_time_embd",
+                                               "unet_aug_emb",
+                                               "unet_in_conv",
+                                               "unet_db1",
+                                               "unet_db2",
+                                               "unet_mb",
+                                               "unet_upblock00",
+                                               "unet_upblock01",
+                                               "unet_upblock02",
+                                               "unet_upblock1",
+                                               "unet_out_conv"};
+    std::map<std::string, GraphRunner*> pipelines;
+    pipelines = {
+            {"unet_time_embd", unet_.time_embd.get()},
+            {"unet_aug_emb", unet_.aug_emb.get()},
+            {"unet_in_conv", unet_.inConv.get()},
+            {"unet_db1", unet_.unet_db1.get()},
+            {"unet_db2", unet_.unet_db2.get()},
+            {"unet_mb", unet_.unet_mb.get()},
+            {"unet_upblock00", unet_.unet_upblock00.get()},
+            {"unet_upblock01", unet_.unet_upblock01.get()},
+            {"unet_upblock02", unet_.unet_upblock02.get()},
+            {"unet_upblock1", unet_.unet_upblock1.get()},
+            {"unet_out_conv", unet_.outConv.get()}
+    };
+    for (auto& it : pipelines) {
+        std::string pipe_name = it.first;
+        LOGI("Building %s", pipe_name.c_str());
+        pipe = findPipe(mp_cfg, pipe_name);
+        if (pipe.models.empty()) { LOGE("Missing pipeline %s", pipe_name.c_str()); return false; }
+        log += buildArbitraryChainFromConfig(mgr_,
+                                           g_modelDir_,
+                                           pipe,
+                                           ws_,
+                                           *it.second,
+                                           runtime_hint,
+                                           reset_sessions);
     }
-
-    LOGI("Building unet_upblock00");
-    pipe = findPipe(mp_cfg, "unet_upblock00");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_upblock00'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.unet_upblock00,
-                                       runtime_hint,
-                                       reset_sessions);
-
-    LOGI("Building unet_upblock00");
-    pipe = findPipe(mp_cfg, "unet_upblock01");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_upblock01'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.unet_upblock01,
-                                       runtime_hint,
-                                       reset_sessions);
-
-    LOGI("Building unet_ublocks_2");
-    pipe = findPipe(mp_cfg, "unet_ublocks_2");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_ublocks_2'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.unet_blocks_2,
-                                       runtime_hint,
-                                       reset_sessions);
-    LOGW("RIGHT AFTER BUILD");
-    for (const auto&  n : unet_.unet_blocks_2->getNodes()) {
-        LOGW("%s", n.name.c_str());
-    }
-
-    LOGI("Building unet_out_conv");
-    pipe = findPipe(mp_cfg, "unet_out_conv");
-    if (pipe.models.empty()) { LOGE("Missing pipeline 'unet_out_conv'"); return false; }
-    log += buildArbitraryChainFromConfig(mgr_,
-                                       g_modelDir_,
-                                       pipe,
-                                       ws_,
-                                       *unet_.outConv,
-                                       runtime_hint,
-                                       reset_sessions);
 
     LOGI("Building VAE decoder");
     pipe = findPipe(mp_cfg, "vae");
@@ -250,7 +213,7 @@ bool SDXLPipeline::init_networks(char runtime_hint) {
 }
 
 
-bool SDXLPipeline::init_text_encoders(
+bool SDXLPipelineGranular::init_text_encoders(
 //        const std::string& te1_dlc_path,
 //        const std::string& te2_dlc_path,
         char runtime_hint='D') {
@@ -276,7 +239,7 @@ bool SDXLPipeline::init_text_encoders(
     return true;
 }
 
-std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
+std::string SDXLPipelineGranular::run_encoders(const int32_t* ids1_77,
                                         const int32_t* ids2_77) {
 
     // --- 1) Copy input ids into workspace (strict zero-copy binding will feed these to TE1/TE2)
@@ -288,6 +251,11 @@ std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
 
     void* te1_ptr = ws_.data(kTe1Ids);
     void* te2_ptr = ws_.data(kTe2Ids);
+
+    auto *te1 = static_cast<int32_t*>(ws_.data(kTe1Ids));
+    auto *te2 = static_cast<int32_t*>(ws_.data(kTe2Ids));
+    const auto& te1info = ws_.tinfoOf(kTe1Ids);
+    const auto& te2info = ws_.tinfoOf(kTe2Ids);
 
     if (!te1_ptr || !te2_ptr) {
         LOGE("encode_prompt: workspace inputs missing (te1='%s' te2='%s')", kTe1Ids, kTe2Ids);
@@ -301,12 +269,18 @@ std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
 
 //    std::memcpy(te1_ptr, ids1_77, needBytes);
     std::memcpy(te1_ptr, ids1_77, sizeof(ids1_77));
+    std::memcpy(te1, ids1_77, te1info->bytes());
 //    std::memcpy(te2_ptr, ids2_77, needBytes);
-    std::memcpy(te2_ptr, ids2_77, sizeof(ids2_77));
+    std::memcpy(te2_ptr, ids2_77, te2info->bytes());
+
+    LOGW("SIZE OF IDS: %zu", sizeof(ids1_77));
+
+    logNumbers(te1, *te1info, kTe1Ids, 10, 'w', "TOK1: ");
+    logNumbers(te2, *te2info, kTe2Ids, 10, 'w', "TOK2: ");
 
     if (!&enc_gr_) return "Graph not built";
     std::string execution_summary;
-    execution_summary = runGraph(enc_gr_, false);
+    execution_summary = runGraph(enc_gr_, true);
     LOGI("Done with encoders execution!");
 
     // --- 3) Expose output pointers from workspace
@@ -329,24 +303,24 @@ std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
     auto pe1_tinfo = ws_.tinfoOf(kPrompt1);
     auto pe2_tinfo = ws_.tinfoOf(kPrompt2);
     auto pooled_pe_tinfo = ws_.tinfoOf(kPromptPool);
-    bool read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pe1.bin", prompt_embeds1, pe1_tinfo->bytes());
-    if (read_from_file) {
-        LOGI("[Prompt Embeddings 1:] Read from file!");
-    } else {
-        LOGW("[Prompt Embeddings 1:] Unable to read from file!");
-    }
-    read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pe2.bin", prompt_embeds2, pe2_tinfo->bytes());
-    if (read_from_file) {
-        LOGI("[Prompt Embeddings 2:] Read from file!");
-    } else {
-        LOGW("[Prompt Embeddings 2:] Unable to read from file!");
-    }
-    read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pooled_pe.bin", pooled_prompt_embeds, pooled_pe_tinfo->bytes());
-    if (read_from_file) {
-        LOGI("[Pooled Prompt Embeddings:] Read from file!");
-    } else {
-        LOGW("[Pooled Prompt Embeddings:] Unable to read from file!");
-    }
+//    bool read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pe1.bin", prompt_embeds1, pe1_tinfo->bytes());
+//    if (read_from_file) {
+//        LOGI("[Prompt Embeddings 1:] Read from file!");
+//    } else {
+//        LOGW("[Prompt Embeddings 1:] Unable to read from file!");
+//    }
+//    read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pe2.bin", prompt_embeds2, pe2_tinfo->bytes());
+//    if (read_from_file) {
+//        LOGI("[Prompt Embeddings 2:] Read from file!");
+//    } else {
+//        LOGW("[Prompt Embeddings 2:] Unable to read from file!");
+//    }
+//    read_from_file = readFileToBuffer("/sdcard/Android/data/com.example.snpechainingdemo/files/pooled_pe.bin", pooled_prompt_embeds, pooled_pe_tinfo->bytes());
+//    if (read_from_file) {
+//        LOGI("[Pooled Prompt Embeddings:] Read from file!");
+//    } else {
+//        LOGW("[Pooled Prompt Embeddings:] Unable to read from file!");
+//    }
 
     const size_t BS = static_cast<size_t>(B_) * static_cast<size_t>(S_);
     // ensure output buffer [B,S,D1+D2]
@@ -408,7 +382,7 @@ std::string SDXLPipeline::run_encoders(const int32_t* ids1_77,
     return execution_summary;
 }
 
-std::pair<float*, size_t> SDXLPipeline::prepare_latents(const int width,
+std::pair<float*, size_t> SDXLPipelineGranular::prepare_latents(const int width,
                                                         const int height,
                                                         const char* wsName /*= "latents"*/,
                                                         std::optional<uint64_t> seed /*= std::nullopt*/,
@@ -496,7 +470,7 @@ inline std::array<int32_t, 6> buildAddTimeIds(
 }
 
 // 2) Validate dims and write a [1,6] float32 buffer into the workspace.
-bool SDXLPipeline::add_time_ids_toWorkspace(
+bool SDXLPipelineGranular::add_time_ids_toWorkspace(
         TensorWorkspace& ws,
         const char* wsName,
         std::pair<int,int> original_size,
@@ -563,7 +537,7 @@ bool SDXLPipeline::add_time_ids_toWorkspace(
     return true;
 }
 
-void SDXLPipeline::get_aug_emb2() {
+void SDXLPipelineGranular::get_aug_emb2() {
     std::string aug_emb_summary;
 
     // inputs: time_ids and text_embeddings
@@ -604,9 +578,17 @@ static void transpose_inplace_nhwc_nchw(float* data, int N, int C, int H, int W,
     std::memcpy(data, tmp.data(), total*sizeof(float));
 }
 
-void SDXLPipeline::unet_wrapper2(const float t) {
+inline bool dumpFloatTensor(const std::string &path, const float* data, size_t n) {
+    std::ofstream os(path, std::ios::binary);
+    if(!os) return false;
+    os.write(reinterpret_cast<const char*>(data), n*sizeof(float));
+    return bool(os);
+}
+
+void SDXLPipelineGranular::unet_wrapper2(const float t) {
 
     std::string unet_execution_summary;
+    const bool reset_sessions = true;
     // 1. time embeddings:
 //    t_emb = self.get_time_embed(sample=sample, timestep=timestep)
 //    emb = self.time_embedding(t_emb, timestep_cond)
@@ -619,7 +601,7 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     auto* timestep_info = ws_.tinfoOf(time_embd_input_wsName);
 //    std::memcpy(timestep, &t, timestep_info->bytes());
     std::memcpy(timestep, &t, sizeof(timestep));
-    unet_execution_summary = runGraph(*unet_.time_embd, true);
+    unet_execution_summary = runGraph(*unet_.time_embd, reset_sessions);
 
     // 2. aug_emb:
     // aug_emb = self.get_aug_embed(emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs)
@@ -671,30 +653,36 @@ void SDXLPipeline::unet_wrapper2(const float t) {
         LOGE("[UNET:] inputs to inConv do not exist!");
         return;
     }
-    unet_execution_summary += runGraph(*unet_.inConv, true);
+    unet_execution_summary += runGraph(*unet_.inConv, reset_sessions);
 
     // 5. down-, mid-, and up-blocks: (sample, temb, encoder_hidden_states) ==> one final output
     LOGI("Running Unet cross-attention blocks...");
-    const auto& nodes = unet_.unet_blocks->getNodes();
-    LOGW("UNET UBLOCK HAS NODES:");
-    for (const auto& n : nodes) {
-        LOGW("%s", n.name.c_str());
+//    const auto& nodes = unet_.unet_blocks->getNodes();
+//    LOGW("UNET UBLOCK HAS NODES:");
+//    for (const auto& n : nodes) {
+//        LOGW("%s", n.name.c_str());
+//    }
+//    for (const auto& n : nodes[0].session.get()->inputs()) {
+//        const auto& wsName = nodes[0].inputBinding.at(n.name);
+//        if (!ws_.data(wsName)) {
+//            LOGE("[Unet:] inputs %s (workspace: %s) to u_blocks does not exist", n.name.c_str(), wsName.c_str());
+//            return;
+//        }
+//    }
+//    unet_execution_summary += runGraph(*unet_.unet_blocks, true);
+    if (false) {
+        load_tensors("db1");
     }
-    for (const auto& n : nodes[0].session.get()->inputs()) {
-        const auto& wsName = nodes[0].inputBinding.at(n.name);
-        if (!ws_.data(wsName)) {
-            LOGE("[Unet:] inputs %s (workspace: %s) to u_blocks does not exist", n.name.c_str(), wsName.c_str());
-            return;
-        }
-    }
-    unet_execution_summary += runGraph(*unet_.unet_blocks, true);
+    unet_execution_summary += runGraph(*unet_.unet_db1, reset_sessions);
+    unet_execution_summary += runGraph(*unet_.unet_db2, false);
+    unet_execution_summary += runGraph(*unet_.unet_mb, false);
 
     LOGW("NODE NAMES ===========");
-    const std::string nominal_output_name = "out_sample"; // "output_0";
-//    const std::string nominal_output_name = "output_0";
-    for (const auto& node : unet_.unet_blocks_2->getNodes()) {
-        LOGW("%s", node.name.c_str());
-    }
+//    const std::string nominal_output_name = "out_sample"; // "output_0";
+    const std::string nominal_output_name = "output_0";
+//    for (const auto& node : unet_.unet_blocks_2->getNodes()) {
+//        LOGW("%s", node.name.c_str());
+//    }
 
     auto& tinfos00 = unet_.unet_upblock00->last().session.get()->outputs();
     LOGW("HIDDEN STATES OF UPBLOCK00 DIMENSION:");
@@ -721,7 +709,7 @@ void SDXLPipeline::unet_wrapper2(const float t) {
         }
     }
 
-    const auto hidden_states_wsName = unet_.unet_blocks_2->getNode("upblock02").inputBinding.at("hidden_states");
+    const auto hidden_states_wsName = unet_.unet_upblock02->getNode("upblock02").inputBinding.at("hidden_states");
     if (hidden_states_wsName.empty()) {
         LOGE("[Unet:] Did not find workspace tensor name for hidden_states -- likely due to node name mistmatch.");
         return;
@@ -734,7 +722,7 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     }
 
     LOGI("Running upblock 00...");
-    unet_execution_summary += runGraph(*unet_.unet_upblock00, true);
+    unet_execution_summary += runGraph(*unet_.unet_upblock00, false);
     LOGI("Transposing...");
 //    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
     // transpose the output of upblock00 to input upblock01 -----------------------------------
@@ -752,7 +740,7 @@ void SDXLPipeline::unet_wrapper2(const float t) {
 
 
     LOGI("Running upblock 01...");
-    unet_execution_summary += runGraph(*unet_.unet_upblock01, true);
+    unet_execution_summary += runGraph(*unet_.unet_upblock01, reset_sessions);
     LOGI("Transposing...");
 //    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
     // transpose the output of upblock00 to input upblock01 -----------------------------------
@@ -760,13 +748,13 @@ void SDXLPipeline::unet_wrapper2(const float t) {
     auto* out_hidden_01 = static_cast<float*>(ws_.data(out_hidden_01_wsName));
     LOGI("out hidden 01 (%s)", out_hidden_01_wsName.c_str());
 
-    const auto& in_hidden_02_wsName = unet_.unet_blocks_2->getNode("upblock02").inputBinding.at("hidden_states");
+    const auto& in_hidden_02_wsName = unet_.unet_upblock02->getNode("upblock02").inputBinding.at("hidden_states");
     auto* in_hidden_02 = static_cast<float*>(ws_.data(in_hidden_02_wsName));
     LOGI("in hidden 02 (%s)", in_hidden_02_wsName.c_str());
 
     nhwc_to_nchw(in_hidden_02, out_hidden_01, 1, 32, 32, 1280);
 
-    const auto& tinfos = unet_.unet_blocks_2->getNode("upblock02").session.get()->inputs();
+    const auto& tinfos = unet_.unet_upblock02->getNode("upblock02").session.get()->inputs();
     LOGW("HIDDEN STATES OF BLOCK02 DIMENSION:");
     for (auto& tnfo : tinfos) {
         if (tnfo.name == "hidden_states") {
@@ -775,163 +763,126 @@ void SDXLPipeline::unet_wrapper2(const float t) {
             }
         }
     }
-    LOGI("Running upblock 02 and 1...");
-    unet_execution_summary += runGraph(*unet_.unet_blocks_2, true);
+    LOGI("Running upblock 02...");
+    if (false) {
+        load_tensors("up02");
+    }
+    unet_execution_summary += runGraph(*unet_.unet_upblock02, false);
+
+    LOGI("Running upblock 1...");
+    if (false) {
+        load_tensors("up1");
+    }
+    unet_execution_summary += runGraph(*unet_.unet_upblock1, reset_sessions);
+//    auto *up1_output = static_cast<float*>(ws_.data("latent_sample"));
+//    auto up1_tinfo = ws_.tinfoOf("latent_sample");
+//    dumpFloatTensor("/sdcard/Android/data/com.example.snpechainingdemo/files/up1_output_CPU.bin",
+//                    up1_output, up1_tinfo->numel());
 
     // 6. conv_norm_out, conv_act, conv_out ==> predicted noise
     LOGI("Running Unet outConv...");
-    unet_execution_summary += runGraph(*unet_.outConv, true);
+    if (false) {
+        load_tensors("out_conv");
+    }
+    std::string outconv_input_name = unet_.outConv->last().session->inputs().back().name;
+    auto outconv_input_wsName = unet_.outConv->last().inputBinding.at(outconv_input_name);
+    auto *outconv_inputs = static_cast<float *>(ws_.data(outconv_input_wsName));
+    const auto& outconv_inputs_tinfo = ws_.tinfoOf(outconv_input_wsName);
+    logNumbers(outconv_inputs, *outconv_inputs_tinfo, outconv_input_wsName, 12, 'w', "Out conv input:");
+
+    unet_execution_summary += runGraph(*unet_.outConv, reset_sessions);
 
     LOGI("Finished running Unet!\n %s", unet_execution_summary.c_str());
 }
 
-void SDXLPipeline::unet_wrapper(const float t) {
+void SDXLPipelineGranular::load_tensors(std::string target_net) {
+    std::string base_folder = "/sdcard/Android/data/com.example.snpechainingdemo/files/calib/bear/";
 
-    std::string unet_execution_summary;
-    // 1. time embeddings:
-//    t_emb = self.get_time_embed(sample=sample, timestep=timestep)
-//    emb = self.time_embedding(t_emb, timestep_cond)
-    LOGI("[Unet:] getting time embeds");
-    std::string time_embd_input_name = unet_.time_embd->last().session.get()->inputs().back().name;
-    auto time_embd_input_wsName = unet_.time_embd->last().inputBinding.at(time_embd_input_name);
-    time_embd_input_wsName = !time_embd_input_wsName.empty() ? time_embd_input_wsName : "timestep";
-//    auto* timestep = static_cast<int32_t*>(ws_.data(time_embd_input_wsName));
-    auto* timestep = static_cast<float*>(ws_.data(time_embd_input_wsName));
-    auto* timestep_info = ws_.tinfoOf(time_embd_input_wsName);
-//    std::memcpy(timestep, &t, timestep_info->bytes());
-    std::memcpy(timestep, &t, sizeof(timestep));
-    unet_execution_summary = runGraph(*unet_.time_embd, true);
+    std::unordered_map<std::string, std::unordered_map<std::string,std::string>> network_map;
+    network_map = {
+            {"out_conv", {{"latent_sample", "up1_output.bin"}}, },
+            {"up1", {{"sample", "up1_input_0.bin"},
+                            {"temb", "temb.bin"},
+                            {"encoder_hidden_states", "encoder_hidden_states.bin"},
+                            {"down_block_res_samples_0", "up1_input_1.bin"},
+                            {"down_block_res_samples_1", "up1_input_2.bin"},
+                            {"down_block_res_samples_2", "up1_input_3.bin"},
+                            {"down_block_res_samples_3", "up1_input_4.bin"},
+                            {"down_block_res_samples_4", "up1_input_5.bin"},
+                            {"down_block_res_samples_5", "up1_input_6.bin"}
+            }},
+            {"up02", {{"hidden_states", "up02_input_0.bin"},
+                             {"temb", "temb.bin"},
+                             {"encoder_hidden_states", "encoder_hidden_states.bin"},
+                             {"res_hidden_states_0", "up02_input_1.bin"}
+            }},
+            {"up01", {{"hidden_states", "up01_input_0.bin"},
+                             {"temb", "temb.bin"},
+                             {"encoder_hidden_states", "encoder_hidden_states.bin"},
+                             {"res_hidden_states_0", "up01_input_1.bin"},
+                             {"res_hidden_states_1", "up01_input_2.bin"}
+            }},
+            {"up00", {{"hidden_states", "up00_input_0.bin"},
+                             {"temb", "temb.bin"},
+                             {"encoder_hidden_states", "encoder_hidden_states.bin"},
+                             {"res_hidden_states_0", "up00_input_1.bin"},
+                             {"res_hidden_states_1", "up00_input_2.bin"},
+                             {"res_hidden_states_2", "up00_input_3.bin"}
+            }},
+            {"mb", {{"hidden_states", "midblock_input.bin"},
+                             {"temb", "temb.bin"},
+                             {"encoder_hidden_states", "encoder_hidden_states.bin"}
+            }},
+            {"db2", {{"hidden_states", "downblocks2_input.bin"},
+                             {"temb", "temb.bin"},
+                             {"encoder_hidden_states", "encoder_hidden_states.bin"}
+            }},
+            {"db1", {{"sample", "downblocks1_input.bin"},
+                             {"temb", "temb.bin"},
+                             {"encoder_hidden_states", "encoder_hidden_states.bin"}
+            }}
+    };
 
-    // 2. aug_emb:
-    // aug_emb = self.get_aug_embed(emb=emb, encoder_hidden_states=encoder_hidden_states, added_cond_kwargs=added_cond_kwargs)
-    LOGI("[Unet:] getting aug embs");
-    get_aug_emb2();
-
-    // 3. emb = emb + aug_emb if aug_emb is not None else emb
-    LOGI("[Unet:] combining emb with aug_emb");
-    auto* emb = static_cast<float*>(ws_.data("emb"));
-    auto* aug_emb = static_cast<float*>(ws_.data("aug_emb"));
-    if (!emb) {
-        LOGE("combine embeds: base emb missing");
-        return;
-    }
-    if (!aug_emb) {
-        LOGE("combine embeds: aug_emb missing");
-        return;
-    }
-    const size_t embBytes = ws_.sizeOf("emb");
-    const size_t augBytes = ws_.sizeOf("aug_emb");
-    if (embBytes != augBytes) {
-        LOGE("combine_embeds_add: size mismatch emb=%zu aug=%zu", embBytes, augBytes);
-        return;
-    }
-    auto* emb_info = ws_.tinfoOf("emb");
-    size_t n;
-    if (!emb_info) {
-        n = embBytes / sizeof(float);
+    auto net_to_use = unet_.outConv.get();
+    if (target_net == "out_conv") {
+        net_to_use = unet_.outConv.get();
+    } else if (target_net == "up1") {
+        net_to_use = unet_.unet_upblock1.get();
+    } else if (target_net == "up02") {
+        net_to_use = unet_.unet_upblock02.get();
+    } else if (target_net == "up01") {
+        net_to_use = unet_.unet_upblock01.get();
+    } else if (target_net == "up00") {
+        net_to_use = unet_.unet_upblock00.get();
+    } else if (target_net == "mb") {
+        net_to_use = unet_.unet_mb.get();
+    } else if (target_net == "db2") {
+        net_to_use = unet_.unet_db2.get();
+    } else if (target_net == "db1") {
+        net_to_use = unet_.unet_db1.get();
     } else {
-        n = emb_info->numel();
-    }
-    LOGI("EMB n %lu", n);
-    const auto& aug_emb_tinfo = ws_.tinfoOf("aug_emb");
-    logNumbers(aug_emb, *aug_emb_tinfo, "aug_emb", 12, 'w', "Aug Emb:");
-
-    float* dst = emb;
-    const float* src = aug_emb;
-    // simple vector add
-    for (size_t i = 0; i < n; ++i) dst[i] += src[i];
-
-    // 4. conv_in: latent --> sample
-    LOGI("Running Unet inConv...");
-//    check that inputs are present
-    std::string conv_in_name = unet_.inConv->last().session->inputs().back().name;
-    auto conv_in_wsName = unet_.inConv->last().inputBinding.at(conv_in_name);
-    if (!ws_.has(conv_in_wsName) || !ws_.data(conv_in_wsName)) {
-        LOGE("[UNET:] inputs to inConv do not exist!");
-        return;
-    }
-    unet_execution_summary += runGraph(*unet_.inConv, true);
-
-    // 5. down-, mid-, and up-blocks: (sample, temb, encoder_hidden_states) ==> one final output
-    LOGI("Running Unet cross-attention blocks...");
-    const auto& nodes = unet_.unet_blocks->getNodes();
-    for (const auto& n : nodes[0].session.get()->inputs()) {
-        const auto& wsName = nodes[0].inputBinding.at(n.name);
-        if (!ws_.data(wsName)) {
-            LOGE("[Unet:] inputs %s (workspace: %s) to u_blocks does not exist", n.name.c_str(), wsName.c_str());
-            return;
-        }
-    }
-    unet_execution_summary += runGraph(*unet_.unet_blocks, true);
-
-    LOGW("NODE NAMES ===========");
-    for (const auto& node : unet_.unet_blocks_2->getNodes()) {
-        LOGW("%s", node.name.c_str());
+        LOGE("DID NOT FIND THE TARGET NETWORK %s", target_net.c_str());
     }
 
-    auto& tinfos00 = unet_.unet_upblock00->last().session.get()->outputs();
-    LOGW("HIDDEN STATES OF UPBLOCK00 DIMENSION:");
-    for (auto& tnfo : tinfos00) {
-        if (tnfo.name == "output_0") {
-            for (auto& d : tnfo.dims) {
-                LOGW("%lu", d);
-            }
+    for (auto& it : network_map.at(target_net)) {
+        auto input_wsName = net_to_use->last().inputBinding.at(it.first);
+        auto* inputs = static_cast<float *>(ws_.data(input_wsName));
+        if (!inputs) LOGE("No workspace tensor for %s", input_wsName.c_str());
+        const auto& inputs_tinfo = ws_.tinfoOf(input_wsName);
+        std::stringstream filename;
+        filename << base_folder << it.second;
+        bool read_from_file = readFileToBuffer(
+            filename.str(), inputs,inputs_tinfo->bytes());
+        if (read_from_file) {
+            LOGI("[Pipeline:] Read input for %s from file!", target_net.c_str());
+        } else {
+            LOGE("[Pipeline:] Could not read from file for %s!", target_net.c_str());
         }
     }
 
-    const auto& tinfos01 = unet_.unet_upblock01->last().session.get()->outputs();
-    LOGW("HIDDEN STATES OF UPBLOCK01 DIMENSION:");
-    for (auto& tnfo : tinfos01) {
-        if (tnfo.name == "output_0") {
-            for (auto& d : tnfo.dims) {
-                LOGW("%lu", d);
-            }
-        }
-    }
-
-    const auto hidden_states_wsName = unet_.unet_blocks_2->getNode("upblock02").inputBinding.at("hidden_states");
-    if (hidden_states_wsName.empty()) {
-        LOGE("[Unet:] Did not find workspace tensor name for hidden_states -- likely due to node name mistmatch.");
-        return;
-    }
-    auto* hidden_states = static_cast<float*>(ws_.data(hidden_states_wsName));
-    const auto& hidden_states_tinfo = ws_.tinfoOf(hidden_states_wsName);
-    LOGW("HIDDEN STATES DIMENSION:");
-    for (auto& d : hidden_states_tinfo->dims) {
-        LOGW("%lu", d);
-    }
-
-    LOGI("Running upblock 00...");
-    unet_execution_summary += runGraph(*unet_.unet_upblock00, true);
-    LOGI("Transposing in place");
-    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
-
-    LOGI("Running upblock 01...");
-    unet_execution_summary += runGraph(*unet_.unet_upblock01, true);
-    LOGI("Transposing in place");
-    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
-
-
-    const auto& tinfos = unet_.unet_blocks_2->getNode("upblock02").session.get()->inputs();
-    LOGW("HIDDEN STATES OF BLOCK02 DIMENSION:");
-    for (auto& tnfo : tinfos) {
-        if (tnfo.name == "hidden_states") {
-            for (auto& d : tnfo.dims) {
-                LOGW("%lu", d);
-            }
-        }
-    }
-    LOGI("Running upblock 02 and 1...");
-    unet_execution_summary += runGraph(*unet_.unet_blocks_2, true);
-
-    // 6. conv_norm_out, conv_act, conv_out ==> predicted noise
-    LOGI("Running Unet outConv...");
-    unet_execution_summary += runGraph(*unet_.outConv, true);
-
-    LOGI("Finished running Unet!");
 }
 
-std::vector<float> SDXLPipeline::overall_pipeline(const int32_t* ids1_77,
+std::vector<float> SDXLPipelineGranular::overall_pipeline(const int32_t* ids1_77,
                                                   const int32_t* ids2_77,
                                                   bool decode_only) {
 
@@ -973,7 +924,7 @@ std::vector<float> SDXLPipeline::overall_pipeline(const int32_t* ids1_77,
         LOGI("[Pipeline:] preparing latents...");
 
         auto [latents, latent_elems] = prepare_latents(inf_config_.width, inf_config_.height,
-                                                       latents_wsName.c_str(), 13540, true);
+                                                       latents_wsName.c_str(), 134540, true); //13540
         if (!latents || latent_elems == 0) {
             LOGE("latents not allocated");
             return dummy_out;
@@ -1029,7 +980,7 @@ std::vector<float> SDXLPipeline::overall_pipeline(const int32_t* ids1_77,
 
         LOGI("[Pipeline:] entering the denoising loop...");
         int k = 0;
-        int get_latent = 5;//5;
+        int get_latent = 0;//5;
         for (auto t: timesteps) {
             //        latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
             LOGI("[Pipeline:] Timestep %f", t);
@@ -1040,6 +991,7 @@ std::vector<float> SDXLPipeline::overall_pipeline(const int32_t* ids1_77,
                 filename
                         << "/sdcard/Android/data/com.example.snpechainingdemo/files/initial_latent_"
                         << k << ".bin";
+//                filename << "/sdcard/Android/data/com.example.snpechainingdemo/files/bear_latents_7.bin";
                 bool read_from_file = readFileToBuffer(filename.str(), latents,
                                                        latents_tinfo->bytes());
                 if (read_from_file) {
@@ -1170,7 +1122,7 @@ std::vector<float> SDXLPipeline::overall_pipeline(const int32_t* ids1_77,
 //    return dummy_out;
 }
 
-std::vector<float> SDXLPipeline::postprocess_to_chw255(const char* wsName, int C, int H, int W) {
+std::vector<float> SDXLPipelineGranular::postprocess_to_chw255(const char* wsName, int C, int H, int W) {
 
     LOGI("[Postprocessing...]");
 

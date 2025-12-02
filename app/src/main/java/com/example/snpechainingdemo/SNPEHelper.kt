@@ -80,7 +80,7 @@ class SNPEHelper(private val app: Application)  {
 
         @JvmStatic
         external fun runSDXLWhole(assetManager: android.content.res.AssetManager,
-                             ids1: IntArray, ids2: IntArray, decode_only: Boolean) : FloatArray
+                             ids1: IntArray, ids2: IntArray, decode_only: Boolean, init_only: Boolean) : FloatArray
 
     }
 
