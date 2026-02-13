@@ -9,6 +9,8 @@
 #ifndef CHECKRUNTIME_H
 #define CHECKRUNTIME_H
 
+#pragma once
+
 #include "SNPE/SNPEFactory.hpp"
 
 //zdl::DlSystem::Runtime_t checkRuntime(zdl::DlSystem::Runtime_t runtime);

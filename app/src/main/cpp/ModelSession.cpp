@@ -1,21 +1,24 @@
 //
 // Created by Chiheb Boussema on 16/9/25.
 //
-#include "hpp/ModelSession.hpp"
-#include "hpp/TensorTypes.hpp"
-#include "hpp/CheckRuntime.hpp"
+#include "ModelSession.hpp"
+#include "TensorTypes.hpp"
+#include "CheckRuntime.hpp"
 
-#include "zdl/SNPE/SNPEFactory.hpp"
-#include "zdl/SNPE/SNPEBuilder.hpp"
-#include "zdl/DlContainer/IDlContainer.hpp"
-#include "zdl/DlSystem/PlatformConfig.hpp"
-#include "zdl/DlSystem/IUserBufferFactory.hpp"
+#include "SNPE/SNPEFactory.hpp"
+#include "SNPE/SNPEBuilder.hpp"
+#include "DlContainer/IDlContainer.hpp"
+#include "DlSystem/PlatformConfig.hpp"
+#include "DlSystem/IUserBufferFactory.hpp"
 
 #include <android/log.h>
 #include <sys/time.h>
 #include <cstring>
 #include <cassert>
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define  LOG_TAG_MS  "SNPE_MS"
 #define  LOGI_MS(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG_MS,__VA_ARGS__)
 #define  LOGE_MS(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG_MS,__VA_ARGS__)

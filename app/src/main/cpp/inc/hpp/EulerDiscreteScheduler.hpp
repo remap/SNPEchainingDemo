@@ -1,3 +1,7 @@
+//
+// Created by Chiheb Boussema.
+//
+
 #pragma once
 #include <vector>
 #include <cmath>
@@ -9,6 +13,9 @@
 #include <string.h>
 #include <android/log.h>
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define  LOG_TAG_ES  "SCHEDULER"
 #define  LOGI_ES(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG_ES,__VA_ARGS__)
 #define  LOGW_ES(...)  __android_log_print(ANDROID_LOG_WARN,LOG_TAG_ES,__VA_ARGS__)

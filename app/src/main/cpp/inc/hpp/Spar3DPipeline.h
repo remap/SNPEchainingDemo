@@ -95,7 +95,7 @@ public:
 
     void test_spill(uint8_t* img, int ori_width, int ori_height);
     void test_imest(uint8_t* img, int ori_width, int ori_height);
-    void test_sc2(uint8_t* img, int ori_width, int ori_height, const std::string& glb_output_path);
+//    void test_sc2(uint8_t* img, int ori_width, int ori_height, const std::string& glb_output_path);
 
 //protected:
 //    float softplus(float x) {

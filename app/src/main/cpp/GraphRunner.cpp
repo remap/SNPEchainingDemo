@@ -1,10 +1,13 @@
 //
 // Created by Chiheb Boussema on 16/9/25.
 //
-#include "hpp/GraphRunner.hpp"
+#include "GraphRunner.hpp"
 #include <android/log.h>
 #include <unistd.h>
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define  LOG_TAG_GR  "SNPE_GR"
 #define  LOGI_GR(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG_GR,__VA_ARGS__)
 #define  LOGE_GR(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG_GR,__VA_ARGS__)

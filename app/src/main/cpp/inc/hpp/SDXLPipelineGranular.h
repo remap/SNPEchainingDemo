@@ -16,11 +16,11 @@
 #include <random>
 #include <android/asset_manager.h>
 
-#include "hpp/TensorWorkspace.hpp"   // your workspace helper
-#include "hpp/ModelSession.hpp"      // your SNPE session wrapper
-#include "hpp/GraphRunner.hpp"
-#include "hpp/newInferenceHelper.hpp"
-#include "hpp/EulerDiscreteScheduler.hpp"
+#include "TensorWorkspace.hpp"   // your workspace helper
+#include "ModelSession.hpp"      // your SNPE session wrapper
+#include "GraphRunner.hpp"
+#include "newInferenceHelper.hpp"
+#include "EulerDiscreteScheduler.hpp"
 
 struct EncodedOut {
   float* prompt_embeds;           // [B=1, S=77, D1+D2]

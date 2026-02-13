@@ -1,16 +1,25 @@
+//
+// Created by Chiheb Boussema.
+//
+
+
+#ifndef SNPECHAININGDEMO_NEWINFERENCEHELPER_H
+#define SNPECHAININGDEMO_NEWINFERENCEHELPER_H
+
+# pragma once
 #include <jni.h>
 #include <string>
 #include <vector>
 #include <unistd.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
-#include "zdl/DlSystem/DlEnums.hpp"
+#include "DlSystem/DlEnums.hpp"
 #include "TensorWorkspace.hpp"
 #include "SNPE/SNPEFactory.hpp"
 #include "ModelSession.hpp"
 #include "GraphRunner.hpp"
-#include "hpp/ParseConfig.hpp"
-#include "hpp/MMapFile.h"
+#include "ParseConfig.hpp"
+#include "MMapFile.h"
 //#include "initTensorsHelper.h"
 
 static zdl::DlSystem::RuntimeList makeRuntimeOrder(char pref);
@@ -82,3 +91,5 @@ bool readAssetToString(AAssetManager* mgr,
                        const char* filename,
                        std::string& out,
                        std::string* emsg);
+
+#endif // SNPECHAININGDEMO_NEWINFERENCEHELPER_H

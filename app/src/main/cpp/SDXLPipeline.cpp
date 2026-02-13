@@ -2,11 +2,14 @@
 // Created by Chiheb Boussema on 30/9/25.
 //
 
-#include "hpp/SDXLPipeline.h"
-#include "hpp/newInferenceHelper.hpp"
+#include "SDXLPipeline.h"
+#include "newInferenceHelper.hpp"
 #include <unistd.h>
 #include <fstream>         // std::ifstream  (fixes “undefined template basic_ifstream”)
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define LOG_TAG "SDXL_PIPELINE"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)

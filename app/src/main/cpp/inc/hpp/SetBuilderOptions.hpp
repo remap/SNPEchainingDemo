@@ -8,6 +8,7 @@
 
 #ifndef SETBUILDEROPTIONS_H
 #define SETBUILDEROPTIONS_H
+#pragma once
 
 #include "DlSystem/RuntimeList.hpp"
 #include "SNPE/SNPE.hpp"

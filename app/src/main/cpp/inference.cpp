@@ -6,13 +6,13 @@
 #include <vector>
 #include <cstring>
 
-#include "hpp/inference.h"
-#include "hpp/CheckRuntime.hpp"
-#include "hpp/SetBuilderOptions.hpp"
+#include "inference.h"
+#include "CheckRuntime.hpp"
+#include "SetBuilderOptions.hpp"
 #include "LoadContainer.hpp"
 #include "CreateUserBuffer.hpp"
 
-//#include "zdl/DlSystem/RuntimeList.hpp"
+//#include "DlSystem/RuntimeList.hpp"
 
 static std::mutex g_mtx;
 static zdl::DlSystem::RuntimeList g_runtimeList;

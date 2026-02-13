@@ -8,6 +8,7 @@
 
 #ifndef LOADINPUTTENSOR_H
 #define LOADINPUTTENSOR_H
+#pragma once
 
 #include <unordered_map>
 #include <string>

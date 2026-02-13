@@ -10,32 +10,35 @@
 #ifndef NATIVEINFERENCE_INFERENCE_H
 #define NATIVEINFERENCE_INFERENCE_H
 
-#include "zdl/DlSystem/TensorShape.hpp"
-#include "zdl/DlSystem/TensorMap.hpp"
-#include "zdl/DlSystem/TensorShapeMap.hpp"
-#include "zdl/DlSystem/IUserBufferFactory.hpp"
-#include "zdl/DlSystem/IUserBuffer.hpp"
-#include "zdl/DlSystem/UserBufferMap.hpp"
-#include "zdl/DlSystem/IBufferAttributes.hpp"
+#include "DlSystem/TensorShape.hpp"
+#include "DlSystem/TensorMap.hpp"
+#include "DlSystem/TensorShapeMap.hpp"
+#include "DlSystem/IUserBufferFactory.hpp"
+#include "DlSystem/IUserBuffer.hpp"
+#include "DlSystem/UserBufferMap.hpp"
+#include "DlSystem/IBufferAttributes.hpp"
 
-#include "zdl/DlSystem/StringList.hpp"
+#include "DlSystem/StringList.hpp"
 
-#include "zdl/SNPE/SNPE.hpp"
-#include "zdl/SNPE/SNPEFactory.hpp"
-#include "zdl/DlSystem/DlVersion.hpp"
-#include "zdl/DlSystem/DlEnums.hpp"
-#include "zdl/DlSystem/String.hpp"
-#include "zdl/DlContainer/IDlContainer.hpp"
-#include "zdl/SNPE/SNPEBuilder.hpp"
+#include "SNPE/SNPE.hpp"
+#include "SNPE/SNPEFactory.hpp"
+#include "DlSystem/DlVersion.hpp"
+#include "DlSystem/DlEnums.hpp"
+#include "DlSystem/String.hpp"
+#include "DlContainer/IDlContainer.hpp"
+#include "SNPE/SNPEBuilder.hpp"
 
-#include "zdl/DlSystem/ITensor.hpp"
-#include "zdl/DlSystem/ITensorFactory.hpp"
+#include "DlSystem/ITensor.hpp"
+#include "DlSystem/ITensorFactory.hpp"
 
 #include <unordered_map>
 #include "android/log.h"
 
 //#include <opencv2/opencv.hpp>
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define  LOG_TAG    "SNPE_INF"
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)

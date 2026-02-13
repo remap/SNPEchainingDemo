@@ -1,7 +1,7 @@
 //
 // Created by Chiheb Boussema on 16/9/25.
 //
-#include "hpp/TensorWorkspace.hpp"
+#include "TensorWorkspace.hpp"
 
 void* TensorWorkspace::allocate(const std::string& name, size_t bytes) {
     auto it = m_.find(name);

@@ -1,3 +1,11 @@
+//
+// Created by Chiheb Boussema.
+//
+
+#ifndef SNPECHAININGDEMO_TENSORWORKSPACE_H
+#define SNPECHAININGDEMO_TENSORWORKSPACE_H
+
+
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -10,6 +18,9 @@
 
 #include "TensorTypes.hpp"
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define  LOG_TAG_WS  "SNPE_WS"
 #define  LOGI_WS(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG_WS,__VA_ARGS__)
 #define  LOGE_WS(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG_WS,__VA_ARGS__)
@@ -63,3 +74,5 @@ private:
     // Map tensor name -> entry
     std::unordered_map<std::string, Entry> m_;
 };
+
+#endif // SNPECHAININGDEMO_TENSORWORKSPACE_H

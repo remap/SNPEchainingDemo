@@ -8,17 +8,17 @@
 #include <android/log.h>
 #include <cstdlib>
 
-#include "zdl/SNPE/SNPE.hpp"
-#include "zdl/SNPE/SNPEFactory.hpp"
-#include "zdl/DlSystem/DlEnums.hpp"
-#include "zdl/DlSystem/String.hpp"
-#include "zdl/DlSystem/PlatformConfig.hpp"
-#include "zdl/DlContainer/IDlContainer.hpp"
-#include "zdl/SNPE/SNPEBuilder.hpp"
+#include "SNPE/SNPE.hpp"
+#include "SNPE/SNPEFactory.hpp"
+#include "DlSystem/DlEnums.hpp"
+#include "DlSystem/String.hpp"
+#include "DlSystem/PlatformConfig.hpp"
+#include "DlContainer/IDlContainer.hpp"
+#include "SNPE/SNPEBuilder.hpp"
 #include "DlSystem/ITensorFactory.hpp"
 
-#include "hpp/CreateUserBuffer.hpp"
-#include "hpp/inference.h"
+#include "CreateUserBuffer.hpp"
+#include "inference.h"
 
 bool SetAdspLibraryPath(std::string nativeLibPath) {
     nativeLibPath += ";/data/local/tmp/mv_dlc;/vendor/lib/rfsa/adsp;/vendor/dsp/cdsp;/system/lib/rfsa/adsp;/system/vendor/lib/rfsa/adsp;/dsp";

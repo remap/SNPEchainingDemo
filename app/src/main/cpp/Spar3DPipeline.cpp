@@ -1122,7 +1122,7 @@ std::vector<float> Spar3DPipeline::runImageEstimator(std::string& execution_summ
     return out;
 }
 
-void Spar3DPipeline::test_sc2(uint8_t* img, int ori_width, int ori_height, const std::string& glb_output_path) {
+void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_height, const std::string& glb_output_path) {
     std::string execution_summary;
     const bool reset_sessions = false;
 
@@ -1628,324 +1628,324 @@ void Spar3DPipeline::test_sc2(uint8_t* img, int ori_width, int ori_height, const
     LOGI("[Pipeline:] Done exporting to glb. Success? %i", (int)export_success);
 }
 
-void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_height,
-//                                      const std::string& base_path_out, const std::string& nrm_path_out,
-                                      const std::string& glb_output_path) {
-    std::string execution_summary;
-    const bool reset_sessions = true;
-
-    // first need to convert to RGBA, remove background and resize to 512 then get array in [0,1]
-    // input image is likely CHW, so make sure to transpose if needed
-    LOGI("[Pipeline:] preprocessing input image...");
-    const auto input_img_wsName = gr_runners_.img_preparer->last().inputBinding.at("image_array");
-    auto* input_img_array = static_cast<float*>(ws_.data(input_img_wsName)); // should be 512x512x4
-    const auto& input_img_tinfo = ws_.tinfoOf(input_img_wsName);
-    LOGI("input image tensor dimensions:");
-    for (const auto& d : input_img_tinfo->dims) {
-        LOGI("%zu", d);
-    }
-    assert(input_img_tinfo->numel() == inf_config_.img_height * inf_config_.img_width * 4);
-    preprocessImage(img, ori_width, ori_height,
-                    input_img_array, input_img_tinfo->numel(),
-                    inf_config_.img_width, true, true);
-
-    LOGI("[Pipeline:] Network-preparing image...");
-    execution_summary += runGraph(*gr_runners_.img_preparer, reset_sessions);
-
-    LOGI("[Pipeline:] running pdiff_cond...");
-    execution_summary += runGraph(*gr_runners_.pdiff_cond, reset_sessions);
-
-    LOGI("[Pipeline:] preparing noise and conditioning...");
-    // guidance_scale != 0 and != 1.0
-    // condition should already have been initialized by zeros and should be [2,1297,1024]
-    // copy cond_tokens in the first dimension
-    const auto cond_tokens_wsName = gr_runners_.pdiff_cond->last().outputBinding.at("output_0");
-    auto* cond_tokens = static_cast<float*>(ws_.data(cond_tokens_wsName));
-    const auto& cond_tokens_tinfo = ws_.tinfoOf(cond_tokens_wsName);
-
-    const auto denoiser_condition_wsName = gr_runners_.one_step_denoiser->last().inputBinding.at("condition");
-    auto* denoiser_condition = static_cast<float*>(ws_.data(denoiser_condition_wsName));
-
-    std::memcpy(denoiser_condition, cond_tokens, cond_tokens_tinfo->bytes());
-
-    // fill noise tensor with randn noise
-    const auto noise_wsName = gr_runners_.one_step_denoiser->last().inputBinding.at("noise");
-    const auto& noise_tinfo = ws_.tinfoOf(noise_wsName);
-    auto* noise = static_cast<float*>(ws_.data(noise_wsName));
-    uint32_t seed = 42;
-    size_t bytes_to_fill = noise_tinfo->bytes() / 2;
-    fillRandom(noise, bytes_to_fill, 0.0, 1.0, seed);
-    // replicate
-    std::memcpy(noise + noise_tinfo->numel()/2, noise, bytes_to_fill);
-
-    LOGI("[Pipeline:] running denoiser loop...");
-    const auto timestep_wsName = gr_runners_.one_step_denoiser->last().inputBinding.at("t");
-    auto* timestep = static_cast<int32_t*>(ws_.data(timestep_wsName));
-
-    const auto denoising_loop_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at("output_0");
-    LOGI("[Pipeline:] Found tensor workspace for denoising loop sample: WS name: %s", denoising_loop_sample_wsName.c_str());
-    auto* denoising_loop_sample = static_cast<float*>(ws_.data(denoising_loop_sample_wsName));
-
-    for (int i = inf_config_.num_timesteps - 1; i >= 0; --i) {
-        LOGI("[denoiser loop:] ind: %d", i);
-        // prepare timestep tensor
-        timestep[0] = static_cast<int32_t>(i);
-        timestep[1] = static_cast<int32_t>(i);
-        // everything is ready to call the one-step denoiser
-        execution_summary += runGraph(*gr_runners_.one_step_denoiser, false);
-        // update the noisy image for denoising
-        std::memcpy(noise, denoising_loop_sample, noise_tinfo->bytes());
-    }
-    const auto denoised_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at("output_1");
-    gr_runners_.one_step_denoiser->last().session.get()->reset(); // free up memory
-    // get sample
-    LOGI("[Pipeline:] Found tensor workspace for denoiser sample: WS name: %s", denoised_sample_wsName.c_str());
-    auto* denoised_sample = static_cast<float*>(ws_.data(denoised_sample_wsName));
-    const auto& denoised_sample_tinfo = ws_.tinfoOf(denoised_sample_wsName);
-    int d_m = denoised_sample_tinfo->dims[1];
-    assert(d_m == 6);
-    int d_n = denoised_sample_tinfo->dims[2];
-    assert(d_n == 512);
-
-    const auto pc_cond_wsName = gr_runners_.scene_codes1->last().inputBinding.at("pc_cond");
-    auto* pc_cond = static_cast<float*>(ws_.data(pc_cond_wsName));
-    const auto& pc_cond_tinfo = ws_.tinfoOf(pc_cond_wsName);
-    LOGI("pc_cond dims:");
-    for (auto d : pc_cond_tinfo->dims) {
-        LOGI("%lu", d);
-    }
-
-    // transpose denoised_sample and fill pc_cond
-    // we can do a linear walkthrough here because the number of rows is small = 6
-    // Source Pointers: Create 6 pointers, one for the start of each row
-    const float* src0 = denoised_sample;           // Start of Row 0
-    const float* src1 = src0 + d_n;                // Start of Row 1
-    const float* src2 = src1 + d_n;                // ...
-    const float* src3 = src2 + d_n;
-    const float* src4 = src3 + d_n;
-    const float* src5 = src4 + d_n;
-
-    float* dst = pc_cond; // Destination walker
-
-    // Loop 512 times (once per column)
-    for (int i = 0; i < d_n; ++i) {
-        // 1. Read 6 values (one from each row cursor)
-        float v0 = src0[i];
-        float v1 = src1[i];
-        float v2 = src2[i];
-        float v3 = src3[i];
-        float v4 = src4[i];
-        float v5 = src5[i];
-        // 2. Write them contiguously into the destination (which acts as a row in the 512x6 matrix)
-        dst[0] = v0;
-        dst[1] = v1;
-        dst[2] = v2;
-        dst[3] = v3;
-        dst[4] = v4;
-        dst[5] = v5;
-        // 3. Advance destination pointer by 6
-        dst += d_m;
-    }
-    normalize_pc_bbox_inplace(pc_cond, pc_cond_tinfo->dims[0], pc_cond_tinfo->dims[1], pc_cond_tinfo->dims[2]);
-
-    // call scene encoders
-    LOGI("[Pipeline:] Running scene_codes1...");
-    execution_summary += runGraph(*gr_runners_.scene_codes1, reset_sessions);
-
-
-    LOGI("[Pipeline:] Running scene_codes2...");
-    execution_summary += runGraph(*gr_runners_.scene_codes2, reset_sessions);
-
-    // need to do this:
-//    triplane = triplanes[0]
-//        # grid_vertices = self.scale_tensor(
-//        #     self.grid_vertices.to(triplanes.device),
-//        #     self.points_range,
-//        #     self.bbox,
-//        # )
-//        # values = self.query_triplane(grid_vertices, triplane)
-    LOGI("[Pipeline:] Preparing grid vertices...");
-    // create grid_vertices and fill it from file
-    std::string grid_vertices_wsName = "grid_vertices";
-    TensorInfo grid_vertices_tinfo;
-    grid_vertices_tinfo.name = grid_vertices_wsName;
-    grid_vertices_tinfo.dims = {535882, 3}; // dimensions are hard-coded and correspond to original python code
-    {
-        std::string emsg;
-        // allocate buffer and zero initialize
-        ensureWorkspaceBuffer(ws_, "grid_vertices", grid_vertices_tinfo, &emsg);
-    }
-    // get buffer and fill from file
-    auto* grid_vertices_ptr = static_cast<float*>(ws_.data(grid_vertices_wsName));
-    readAssetToBuffer(mgr_, "grid_vertices.bin", grid_vertices_ptr, grid_vertices_tinfo.bytes());
-    // scale tensor
-    scale_tensor_inplace(grid_vertices_ptr, grid_vertices_tinfo.dims[0], 0.0f, 1.0f, -inf_config_.radius, inf_config_.radius);
-    // values = query_triplane(grid_vertices, triplane)
-    const auto values_wsName = gr_runners_.triplanesToProtoMesh->last().inputBinding.at("values");
-    const auto& values_tinfo = ws_.tinfoOf(values_wsName);
-    auto* values = static_cast<float*>(ws_.data(values_wsName));
-
-    const auto scene_codes_wsName = gr_runners_.scene_codes2->last().outputBinding.at("output_0");
-    const auto& scene_codes_tinfo = ws_.tinfoOf(scene_codes_wsName);
-    auto* scene_codes = static_cast<float*>(ws_.data(scene_codes_wsName));
-    {
-        // some logging
-        std::string scene_codes_log = "scene codes dims: ";
-        for (const auto&d : scene_codes_tinfo->dims) scene_codes_log += std::to_string(d)+" ";
-        LOGI("[pipeline:] %s", scene_codes_log.c_str());
-    }
-    LOGI("[Pipeline:] running query triplane to get values...");
-    query_triplane_optimized(grid_vertices_ptr, scene_codes, values, grid_vertices_tinfo.dims[0],
-                             scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
-                             inf_config_.radius);
-
-    // run network to infer sdf and deformation
-    LOGI("[Pipeline:] Getting sdf and deform...");
-    execution_summary += runGraph(*gr_runners_.triplanesToProtoMesh, reset_sessions);
-
-    // create mesh with v_pos and t_pos_idx
-    std::vector<mtd2::Vec3> grid_vertices;
-    std::vector<int> indices;
-    // Load Vertices
-    // Python saved flat floats, we load into Vec3 (size 12 bytes)
-    if (!loadVectorFromAsset(mgr_, "grid_vertices.bin", grid_vertices)) {
-        LOGE("[Pipeline:] Unable to load grid_vertices!");
-    }
-    // Load Indices
-    // Python saved flat int32, we load into int
-    if (!loadVectorFromAsset(mgr_, "indices.bin", indices)) {
-        LOGE("[Pipeline:] Unable to load indices for Marching Tetrahedra Helper!");
-    }
-    // Instantiate
-    auto mt_helper = std::make_unique<mtd2::MarchingTetrahedraHelper>(
-        grid_vertices,
-        indices
-    );
-
-    // get sdf and deformation fields
-    const auto sdf_wsName = gr_runners_.triplanesToProtoMesh->last().outputBinding.at("output_0");
-    auto* sdf = static_cast<float*>(ws_.data(sdf_wsName));
-
-    const auto deformation_wsName = gr_runners_.triplanesToProtoMesh->last().outputBinding.at("output_1");
-    auto* deformation = static_cast<float*>(ws_.data(deformation_wsName));
-    // make mesh with v_pos already scaled
-    mtd2::Mesh mesh = mt_helper->forward(sdf, deformation, bbox_);
-
-    // mesh.unwrap_uv
-    std::vector<int> indices_int(mesh.t_pos_idx.begin(), mesh.t_pos_idx.end());
-    MeshCPP mesh_cpp(mesh.v_pos, indices_int);
-    mesh_cpp.unwrap_uv();
-
-    // rasterize, get mask, interpolate, gb_pos
-    const int N = mesh_cpp.t_pos_idx().size() / 3; // t_pos_idx is Nx3 (flattened)
-    std::vector<ssize_t> shape = { inf_config_.bake_resolution, inf_config_.bake_resolution, 4 };
-    size_t  num_pixels = shape[0]*shape[1];
-    std::vector<float> rast_result(num_pixels*shape[2], 0.0f);
-
-    texture_baker_cpp::rasterize_cpu_host_triangleTile(rast_result.data(),
-                                                       reinterpret_cast<const texture_baker_cpp::tb_float2*>(mesh_cpp.v_tex().data()),
-                                                       reinterpret_cast<const texture_baker_cpp::tb_int3*>(mesh_cpp.t_pos_idx().data()),
-                                                        N,
-                                                        inf_config_.bake_resolution);
-
-    std::vector<uint8_t> bake_mask = get_mask(rast_result, inf_config_.bake_resolution);
-
-    std::vector<float> pos_bake(num_pixels*3, 0.0f); // 1024x1024x3
-    texture_baker_cpp::interpolate_cpu_host(pos_bake.data(),
-                                            mesh_cpp.v_pos().data(),
-                                            mesh_cpp.t_pos_idx().data(),
-                                            N,
-                                            rast_result.data(),
-                                            inf_config_.bake_resolution,
-                                            inf_config_.bake_resolution);
-
-
-    // padded_decoder_with_query_triplane
-    // TODO: update this with new padded decoder and do triplane query inline
-//    const auto padded_gb_pos_wsName = gr_runners_.decoder_triq->last().inputBinding.at("padded_gb");
-//    auto* padded_gb = static_cast<float*>(ws_.data(padded_gb_pos_wsName));
-//    int num_valid_points = compact_masked_parallel(padded_gb, pos_bake.data(), bake_mask.data(), num_pixels);
+//void Spar3DPipeline::overall_pipelineOld(uint8_t* img, int ori_width, int ori_height,
+////                                      const std::string& base_path_out, const std::string& nrm_path_out,
+//                                      const std::string& glb_output_path) {
+//    std::string execution_summary;
+//    const bool reset_sessions = true;
 //
-//    const auto& padded_gb_tinfo = ws_.tinfoOf(padded_gb_pos_wsName);
-//    LOGI("padded_gb first dimension size: %lu", padded_gb_tinfo->dims[0]);
-
-    // ================================================
-    // construct gb_pos = pos_bake[bake_mask]
-    LOGI("[Pipeline:] constructing gb_pos...");
-    const std::string gb_pos_wsName = "gb_pos";
-    TensorInfo gb_pos_tinfo;
-    gb_pos_tinfo.name = gb_pos_wsName;
-    gb_pos_tinfo.dims = {};
-    int num_valid_points = compact_masked_parallel(&gb_pos_wsName, pos_bake.data(), bake_mask.data(), num_pixels, &ws_);
-    auto* gb_pos = static_cast<float*>(ws_.data(gb_pos_wsName));
-    if (!gb_pos) {
-        LOGE("gb_pos was not found in workspace!");
-        return;
-    } else {
-        const auto& gb_pos_tinfo = ws_.tinfoOf(gb_pos_wsName);
-        std::string gb_pos_log = "gb_pos dims: ";
-        for (const auto& d : gb_pos_tinfo->dims) gb_pos_log += std::to_string(d)+" ";
-        LOGW("[Pipeline:] %s", gb_pos_log.c_str());
-    }
-    // tri_query = spar3d_model.query_triplane(gb_pos, triplane)[0]
-    LOGI("[Pipeline:] running query triplane on gb_pos to get tri_query...");
-    const auto padded_tri_query_dec_wsName = gr_runners_.padded_decoder->last().inputBinding.at("padded_tri_query");
-    auto* padded_tri_query_dec = static_cast<float*>(ws_.data(padded_tri_query_dec_wsName));
-    const auto& padded_tri_query_dec_tinfo = ws_.tinfoOf(padded_tri_query_dec_wsName);
-    assert(padded_tri_query_dec_tinfo->dims[0] >= num_valid_points);
-    query_triplane_optimized(gb_pos, scene_codes, padded_tri_query_dec, num_valid_points,
-                             scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
-                             inf_config_.radius);
-
-
-
-    LOGI("[Pipeline:] Running decoder...");
-    // scene_codes as output from scene_codes2: 1x3x40x384x384
-    // scene codes as expected by decoder: 3x40x384x384
-    // in terms of bytes it's the same, but tensor info are not the same
-//    const auto scene_codes_out_wsName = gr_runners_.scene_codes2->last().outputBinding.at("output_0");
-//    auto* scene_codes_out = static_cast<float*>(ws_.data(scene_codes_out_wsName));
-//    const auto scene_codes_in_dec_wsName = gr_runners_.decoder_triq->last().inputBinding.at("scene_codes");
-//    auto* scene_codes_in_dec = static_cast<float*>(ws_.data(scene_codes_in_dec_wsName));
-//    const auto& scene_codes_in_dec_tinfo = ws_.tinfoOf(scene_codes_in_dec_wsName);
-//    std::memcpy(scene_codes_in_dec, scene_codes_out, scene_codes_in_dec_tinfo->bytes());
-
-    execution_summary += runGraph(*gr_runners_.padded_decoder, reset_sessions);
-
-    const auto padded_features_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_0");
-    auto* padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
-
-    const auto padded_perturb_normal_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_1");
-    auto* padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
-
-    // call image estimator and get roughness and metallic
-    LOGI("[Pipeline:] Running image estimator...");
-    execution_summary += runGraph(*gr_runners_.image_estimator, reset_sessions);
-    const auto roughness_wsName = gr_runners_.image_estimator->last().outputBinding.at("output_0");
-    const auto metallic_wsName = gr_runners_.image_estimator->last().outputBinding.at("output_1");
-
-    auto* roughness = static_cast<float*>(ws_.data(roughness_wsName));
-    auto* metallic = static_cast<float*>(ws_.data(metallic_wsName));
-
-    // call texture builder
-    LOGI("[Pipeline:] Building textures...");
-    texture_baker_cpp::BuildTexturesInspect inspect = texture_baker_cpp::BuildTextures_SaveImages(
-            mesh_cpp.v_nrm().data(), mesh_cpp.v_nrm().size(),
-            mesh_cpp.v_tng().data(), mesh_cpp.v_tng().size(),
-            mesh_cpp.v_pos().data(), mesh_cpp.v_pos().size(),
-            mesh_cpp.v_tex().data(), mesh_cpp.v_tex().size(),
-            mesh_cpp.t_pos_idx().data(), mesh_cpp.t_pos_idx().size(),
-            rast_result.data(),
-            bake_mask.data(),
-            inf_config_.bake_resolution,inf_config_.bake_resolution,
-            padded_features, // it's ok to put the padded version as we internally only take the valid size given bake_mask
-            padded_perturb_normal,
-            *roughness,
-            *metallic,
-            "basecolor.jpg", "bump.jpg", false
-            );
-
-    // call glb exporter
-    LOGI("[Pipeline:] Exporting to glb...");
-    bool export_success = texture_baker_cpp::ExportGLBFromInspect(inspect, mesh_cpp, glb_output_path);
-}
+//    // first need to convert to RGBA, remove background and resize to 512 then get array in [0,1]
+//    // input image is likely CHW, so make sure to transpose if needed
+//    LOGI("[Pipeline:] preprocessing input image...");
+//    const auto input_img_wsName = gr_runners_.img_preparer->last().inputBinding.at("image_array");
+//    auto* input_img_array = static_cast<float*>(ws_.data(input_img_wsName)); // should be 512x512x4
+//    const auto& input_img_tinfo = ws_.tinfoOf(input_img_wsName);
+//    LOGI("input image tensor dimensions:");
+//    for (const auto& d : input_img_tinfo->dims) {
+//        LOGI("%zu", d);
+//    }
+//    assert(input_img_tinfo->numel() == inf_config_.img_height * inf_config_.img_width * 4);
+//    preprocessImage(img, ori_width, ori_height,
+//                    input_img_array, input_img_tinfo->numel(),
+//                    inf_config_.img_width, true, true);
+//
+//    LOGI("[Pipeline:] Network-preparing image...");
+//    execution_summary += runGraph(*gr_runners_.img_preparer, reset_sessions);
+//
+//    LOGI("[Pipeline:] running pdiff_cond...");
+//    execution_summary += runGraph(*gr_runners_.pdiff_cond, reset_sessions);
+//
+//    LOGI("[Pipeline:] preparing noise and conditioning...");
+//    // guidance_scale != 0 and != 1.0
+//    // condition should already have been initialized by zeros and should be [2,1297,1024]
+//    // copy cond_tokens in the first dimension
+//    const auto cond_tokens_wsName = gr_runners_.pdiff_cond->last().outputBinding.at("output_0");
+//    auto* cond_tokens = static_cast<float*>(ws_.data(cond_tokens_wsName));
+//    const auto& cond_tokens_tinfo = ws_.tinfoOf(cond_tokens_wsName);
+//
+//    const auto denoiser_condition_wsName = gr_runners_.one_step_denoiser->last().inputBinding.at("condition");
+//    auto* denoiser_condition = static_cast<float*>(ws_.data(denoiser_condition_wsName));
+//
+//    std::memcpy(denoiser_condition, cond_tokens, cond_tokens_tinfo->bytes());
+//
+//    // fill noise tensor with randn noise
+//    const auto noise_wsName = gr_runners_.one_step_denoiser->last().inputBinding.at("noise");
+//    const auto& noise_tinfo = ws_.tinfoOf(noise_wsName);
+//    auto* noise = static_cast<float*>(ws_.data(noise_wsName));
+//    uint32_t seed = 42;
+//    size_t bytes_to_fill = noise_tinfo->bytes() / 2;
+//    fillRandom(noise, bytes_to_fill, 0.0, 1.0, seed);
+//    // replicate
+//    std::memcpy(noise + noise_tinfo->numel()/2, noise, bytes_to_fill);
+//
+//    LOGI("[Pipeline:] running denoiser loop...");
+//    const auto timestep_wsName = gr_runners_.one_step_denoiser->last().inputBinding.at("t");
+//    auto* timestep = static_cast<int32_t*>(ws_.data(timestep_wsName));
+//
+//    const auto denoising_loop_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at("output_0");
+//    LOGI("[Pipeline:] Found tensor workspace for denoising loop sample: WS name: %s", denoising_loop_sample_wsName.c_str());
+//    auto* denoising_loop_sample = static_cast<float*>(ws_.data(denoising_loop_sample_wsName));
+//
+//    for (int i = inf_config_.num_timesteps - 1; i >= 0; --i) {
+//        LOGI("[denoiser loop:] ind: %d", i);
+//        // prepare timestep tensor
+//        timestep[0] = static_cast<int32_t>(i);
+//        timestep[1] = static_cast<int32_t>(i);
+//        // everything is ready to call the one-step denoiser
+//        execution_summary += runGraph(*gr_runners_.one_step_denoiser, false);
+//        // update the noisy image for denoising
+//        std::memcpy(noise, denoising_loop_sample, noise_tinfo->bytes());
+//    }
+//    const auto denoised_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at("output_1");
+//    gr_runners_.one_step_denoiser->last().session.get()->reset(); // free up memory
+//    // get sample
+//    LOGI("[Pipeline:] Found tensor workspace for denoiser sample: WS name: %s", denoised_sample_wsName.c_str());
+//    auto* denoised_sample = static_cast<float*>(ws_.data(denoised_sample_wsName));
+//    const auto& denoised_sample_tinfo = ws_.tinfoOf(denoised_sample_wsName);
+//    int d_m = denoised_sample_tinfo->dims[1];
+//    assert(d_m == 6);
+//    int d_n = denoised_sample_tinfo->dims[2];
+//    assert(d_n == 512);
+//
+//    const auto pc_cond_wsName = gr_runners_.scene_codes1->last().inputBinding.at("pc_cond");
+//    auto* pc_cond = static_cast<float*>(ws_.data(pc_cond_wsName));
+//    const auto& pc_cond_tinfo = ws_.tinfoOf(pc_cond_wsName);
+//    LOGI("pc_cond dims:");
+//    for (auto d : pc_cond_tinfo->dims) {
+//        LOGI("%lu", d);
+//    }
+//
+//    // transpose denoised_sample and fill pc_cond
+//    // we can do a linear walkthrough here because the number of rows is small = 6
+//    // Source Pointers: Create 6 pointers, one for the start of each row
+//    const float* src0 = denoised_sample;           // Start of Row 0
+//    const float* src1 = src0 + d_n;                // Start of Row 1
+//    const float* src2 = src1 + d_n;                // ...
+//    const float* src3 = src2 + d_n;
+//    const float* src4 = src3 + d_n;
+//    const float* src5 = src4 + d_n;
+//
+//    float* dst = pc_cond; // Destination walker
+//
+//    // Loop 512 times (once per column)
+//    for (int i = 0; i < d_n; ++i) {
+//        // 1. Read 6 values (one from each row cursor)
+//        float v0 = src0[i];
+//        float v1 = src1[i];
+//        float v2 = src2[i];
+//        float v3 = src3[i];
+//        float v4 = src4[i];
+//        float v5 = src5[i];
+//        // 2. Write them contiguously into the destination (which acts as a row in the 512x6 matrix)
+//        dst[0] = v0;
+//        dst[1] = v1;
+//        dst[2] = v2;
+//        dst[3] = v3;
+//        dst[4] = v4;
+//        dst[5] = v5;
+//        // 3. Advance destination pointer by 6
+//        dst += d_m;
+//    }
+//    normalize_pc_bbox_inplace(pc_cond, pc_cond_tinfo->dims[0], pc_cond_tinfo->dims[1], pc_cond_tinfo->dims[2]);
+//
+//    // call scene encoders
+//    LOGI("[Pipeline:] Running scene_codes1...");
+//    execution_summary += runGraph(*gr_runners_.scene_codes1, reset_sessions);
+//
+//
+//    LOGI("[Pipeline:] Running scene_codes2...");
+//    execution_summary += runGraph(*gr_runners_.scene_codes2, reset_sessions);
+//
+//    // need to do this:
+////    triplane = triplanes[0]
+////        # grid_vertices = self.scale_tensor(
+////        #     self.grid_vertices.to(triplanes.device),
+////        #     self.points_range,
+////        #     self.bbox,
+////        # )
+////        # values = self.query_triplane(grid_vertices, triplane)
+//    LOGI("[Pipeline:] Preparing grid vertices...");
+//    // create grid_vertices and fill it from file
+//    std::string grid_vertices_wsName = "grid_vertices";
+//    TensorInfo grid_vertices_tinfo;
+//    grid_vertices_tinfo.name = grid_vertices_wsName;
+//    grid_vertices_tinfo.dims = {535882, 3}; // dimensions are hard-coded and correspond to original python code
+//    {
+//        std::string emsg;
+//        // allocate buffer and zero initialize
+//        ensureWorkspaceBuffer(ws_, "grid_vertices", grid_vertices_tinfo, &emsg);
+//    }
+//    // get buffer and fill from file
+//    auto* grid_vertices_ptr = static_cast<float*>(ws_.data(grid_vertices_wsName));
+//    readAssetToBuffer(mgr_, "grid_vertices.bin", grid_vertices_ptr, grid_vertices_tinfo.bytes());
+//    // scale tensor
+//    scale_tensor_inplace(grid_vertices_ptr, grid_vertices_tinfo.dims[0], 0.0f, 1.0f, -inf_config_.radius, inf_config_.radius);
+//    // values = query_triplane(grid_vertices, triplane)
+//    const auto values_wsName = gr_runners_.triplanesToProtoMesh->last().inputBinding.at("values");
+//    const auto& values_tinfo = ws_.tinfoOf(values_wsName);
+//    auto* values = static_cast<float*>(ws_.data(values_wsName));
+//
+//    const auto scene_codes_wsName = gr_runners_.scene_codes2->last().outputBinding.at("output_0");
+//    const auto& scene_codes_tinfo = ws_.tinfoOf(scene_codes_wsName);
+//    auto* scene_codes = static_cast<float*>(ws_.data(scene_codes_wsName));
+//    {
+//        // some logging
+//        std::string scene_codes_log = "scene codes dims: ";
+//        for (const auto&d : scene_codes_tinfo->dims) scene_codes_log += std::to_string(d)+" ";
+//        LOGI("[pipeline:] %s", scene_codes_log.c_str());
+//    }
+//    LOGI("[Pipeline:] running query triplane to get values...");
+//    query_triplane_optimized(grid_vertices_ptr, scene_codes, values, grid_vertices_tinfo.dims[0],
+//                             scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
+//                             inf_config_.radius);
+//
+//    // run network to infer sdf and deformation
+//    LOGI("[Pipeline:] Getting sdf and deform...");
+//    execution_summary += runGraph(*gr_runners_.triplanesToProtoMesh, reset_sessions);
+//
+//    // create mesh with v_pos and t_pos_idx
+//    std::vector<mtd2::Vec3> grid_vertices;
+//    std::vector<int> indices;
+//    // Load Vertices
+//    // Python saved flat floats, we load into Vec3 (size 12 bytes)
+//    if (!loadVectorFromAsset(mgr_, "grid_vertices.bin", grid_vertices)) {
+//        LOGE("[Pipeline:] Unable to load grid_vertices!");
+//    }
+//    // Load Indices
+//    // Python saved flat int32, we load into int
+//    if (!loadVectorFromAsset(mgr_, "indices.bin", indices)) {
+//        LOGE("[Pipeline:] Unable to load indices for Marching Tetrahedra Helper!");
+//    }
+//    // Instantiate
+//    auto mt_helper = std::make_unique<mtd2::MarchingTetrahedraHelper>(
+//        grid_vertices,
+//        indices
+//    );
+//
+//    // get sdf and deformation fields
+//    const auto sdf_wsName = gr_runners_.triplanesToProtoMesh->last().outputBinding.at("output_0");
+//    auto* sdf = static_cast<float*>(ws_.data(sdf_wsName));
+//
+//    const auto deformation_wsName = gr_runners_.triplanesToProtoMesh->last().outputBinding.at("output_1");
+//    auto* deformation = static_cast<float*>(ws_.data(deformation_wsName));
+//    // make mesh with v_pos already scaled
+//    mtd2::Mesh mesh = mt_helper->forward(sdf, deformation, bbox_);
+//
+//    // mesh.unwrap_uv
+//    std::vector<int> indices_int(mesh.t_pos_idx.begin(), mesh.t_pos_idx.end());
+//    MeshCPP mesh_cpp(mesh.v_pos, indices_int);
+//    mesh_cpp.unwrap_uv();
+//
+//    // rasterize, get mask, interpolate, gb_pos
+//    const int N = mesh_cpp.t_pos_idx().size() / 3; // t_pos_idx is Nx3 (flattened)
+//    std::vector<ssize_t> shape = { inf_config_.bake_resolution, inf_config_.bake_resolution, 4 };
+//    size_t  num_pixels = shape[0]*shape[1];
+//    std::vector<float> rast_result(num_pixels*shape[2], 0.0f);
+//
+//    texture_baker_cpp::rasterize_cpu_host_triangleTile(rast_result.data(),
+//                                                       reinterpret_cast<const texture_baker_cpp::tb_float2*>(mesh_cpp.v_tex().data()),
+//                                                       reinterpret_cast<const texture_baker_cpp::tb_int3*>(mesh_cpp.t_pos_idx().data()),
+//                                                        N,
+//                                                        inf_config_.bake_resolution);
+//
+//    std::vector<uint8_t> bake_mask = get_mask(rast_result, inf_config_.bake_resolution);
+//
+//    std::vector<float> pos_bake(num_pixels*3, 0.0f); // 1024x1024x3
+//    texture_baker_cpp::interpolate_cpu_host(pos_bake.data(),
+//                                            mesh_cpp.v_pos().data(),
+//                                            mesh_cpp.t_pos_idx().data(),
+//                                            N,
+//                                            rast_result.data(),
+//                                            inf_config_.bake_resolution,
+//                                            inf_config_.bake_resolution);
+//
+//
+//    // padded_decoder_with_query_triplane
+//    // TODO: update this with new padded decoder and do triplane query inline
+////    const auto padded_gb_pos_wsName = gr_runners_.decoder_triq->last().inputBinding.at("padded_gb");
+////    auto* padded_gb = static_cast<float*>(ws_.data(padded_gb_pos_wsName));
+////    int num_valid_points = compact_masked_parallel(padded_gb, pos_bake.data(), bake_mask.data(), num_pixels);
+////
+////    const auto& padded_gb_tinfo = ws_.tinfoOf(padded_gb_pos_wsName);
+////    LOGI("padded_gb first dimension size: %lu", padded_gb_tinfo->dims[0]);
+//
+//    // ================================================
+//    // construct gb_pos = pos_bake[bake_mask]
+//    LOGI("[Pipeline:] constructing gb_pos...");
+//    const std::string gb_pos_wsName = "gb_pos";
+//    TensorInfo gb_pos_tinfo;
+//    gb_pos_tinfo.name = gb_pos_wsName;
+//    gb_pos_tinfo.dims = {};
+//    int num_valid_points = compact_masked_parallel(&gb_pos_wsName, pos_bake.data(), bake_mask.data(), num_pixels, &ws_);
+//    auto* gb_pos = static_cast<float*>(ws_.data(gb_pos_wsName));
+//    if (!gb_pos) {
+//        LOGE("gb_pos was not found in workspace!");
+//        return;
+//    } else {
+//        const auto& gb_pos_tinfo = ws_.tinfoOf(gb_pos_wsName);
+//        std::string gb_pos_log = "gb_pos dims: ";
+//        for (const auto& d : gb_pos_tinfo->dims) gb_pos_log += std::to_string(d)+" ";
+//        LOGW("[Pipeline:] %s", gb_pos_log.c_str());
+//    }
+//    // tri_query = spar3d_model.query_triplane(gb_pos, triplane)[0]
+//    LOGI("[Pipeline:] running query triplane on gb_pos to get tri_query...");
+//    const auto padded_tri_query_dec_wsName = gr_runners_.padded_decoder->last().inputBinding.at("padded_tri_query");
+//    auto* padded_tri_query_dec = static_cast<float*>(ws_.data(padded_tri_query_dec_wsName));
+//    const auto& padded_tri_query_dec_tinfo = ws_.tinfoOf(padded_tri_query_dec_wsName);
+//    assert(padded_tri_query_dec_tinfo->dims[0] >= num_valid_points);
+//    query_triplane_optimized(gb_pos, scene_codes, padded_tri_query_dec, num_valid_points,
+//                             scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
+//                             inf_config_.radius);
+//
+//
+//
+//    LOGI("[Pipeline:] Running decoder...");
+//    // scene_codes as output from scene_codes2: 1x3x40x384x384
+//    // scene codes as expected by decoder: 3x40x384x384
+//    // in terms of bytes it's the same, but tensor info are not the same
+////    const auto scene_codes_out_wsName = gr_runners_.scene_codes2->last().outputBinding.at("output_0");
+////    auto* scene_codes_out = static_cast<float*>(ws_.data(scene_codes_out_wsName));
+////    const auto scene_codes_in_dec_wsName = gr_runners_.decoder_triq->last().inputBinding.at("scene_codes");
+////    auto* scene_codes_in_dec = static_cast<float*>(ws_.data(scene_codes_in_dec_wsName));
+////    const auto& scene_codes_in_dec_tinfo = ws_.tinfoOf(scene_codes_in_dec_wsName);
+////    std::memcpy(scene_codes_in_dec, scene_codes_out, scene_codes_in_dec_tinfo->bytes());
+//
+//    execution_summary += runGraph(*gr_runners_.padded_decoder, reset_sessions);
+//
+//    const auto padded_features_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_0");
+//    auto* padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
+//
+//    const auto padded_perturb_normal_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_1");
+//    auto* padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
+//
+//    // call image estimator and get roughness and metallic
+//    LOGI("[Pipeline:] Running image estimator...");
+//    execution_summary += runGraph(*gr_runners_.image_estimator, reset_sessions);
+//    const auto roughness_wsName = gr_runners_.image_estimator->last().outputBinding.at("output_0");
+//    const auto metallic_wsName = gr_runners_.image_estimator->last().outputBinding.at("output_1");
+//
+//    auto* roughness = static_cast<float*>(ws_.data(roughness_wsName));
+//    auto* metallic = static_cast<float*>(ws_.data(metallic_wsName));
+//
+//    // call texture builder
+//    LOGI("[Pipeline:] Building textures...");
+//    texture_baker_cpp::BuildTexturesInspect inspect = texture_baker_cpp::BuildTextures_SaveImages(
+//            mesh_cpp.v_nrm().data(), mesh_cpp.v_nrm().size(),
+//            mesh_cpp.v_tng().data(), mesh_cpp.v_tng().size(),
+//            mesh_cpp.v_pos().data(), mesh_cpp.v_pos().size(),
+//            mesh_cpp.v_tex().data(), mesh_cpp.v_tex().size(),
+//            mesh_cpp.t_pos_idx().data(), mesh_cpp.t_pos_idx().size(),
+//            rast_result.data(),
+//            bake_mask.data(),
+//            inf_config_.bake_resolution,inf_config_.bake_resolution,
+//            padded_features, // it's ok to put the padded version as we internally only take the valid size given bake_mask
+//            padded_perturb_normal,
+//            *roughness,
+//            *metallic,
+//            "basecolor.jpg", "bump.jpg", false
+//            );
+//
+//    // call glb exporter
+//    LOGI("[Pipeline:] Exporting to glb...");
+//    bool export_success = texture_baker_cpp::ExportGLBFromInspect(inspect, mesh_cpp, glb_output_path);
+//}

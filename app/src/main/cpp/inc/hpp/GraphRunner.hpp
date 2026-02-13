@@ -1,12 +1,19 @@
+//
+// Created by Chiheb Boussema.
+//
+
+#ifndef SNPECHAININGDEMO_GRAPHRUNNER_H
+#define SNPECHAININGDEMO_GRAPHRUNNER_H
+
 #pragma once
 #include <string>
 #include <vector>
 #include <unordered_map>
 #include <memory>
 
-#include "hpp/TensorWorkspace.hpp"
-#include "hpp/ModelSession.hpp"
-#include "hpp/TensorTypes.hpp"
+#include "TensorWorkspace.hpp"
+#include "ModelSession.hpp"
+#include "TensorTypes.hpp"
 
 /**
  * GraphRunner orchestrates a sequence of ModelSessions with strict zero-copy edges.
@@ -50,3 +57,5 @@ private:
     TensorWorkspace& ws_;
     std::vector<Node> nodes_;
 };
+
+#endif // SNPECHAININGDEMO_GRAPHRUNNER_H

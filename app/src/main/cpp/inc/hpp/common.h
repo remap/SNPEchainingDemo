@@ -1,3 +1,7 @@
+//
+// Taken from SPAR3D
+//
+
 #pragma once
 
 #include <array>

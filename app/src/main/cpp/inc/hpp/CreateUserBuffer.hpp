@@ -5,7 +5,11 @@
 //  Confidential and Proprietary - Qualcomm Technologies, Inc.
 //
 //==============================================================================
+//
+// Adapted by Chiheb Boussema.
+//
 
+#pragma once
 #include"inference.h"
 #include <vector>
 #include <string>

@@ -7,20 +7,23 @@
 #include <unistd.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
-#include "hpp/inference.h"
+#include "inference.h"
 #include "SNPE/SNPEFactory.hpp"
 #include "ModelSession.hpp"
 #include "GraphRunner.hpp"
 #include "TensorWorkspace.hpp"
 #include "MMapAsset.hpp"
-#include "hpp/ParseConfig.hpp"
-#include "hpp/MMapFile.h"
-#include "hpp/newInferenceHelper.hpp"
-#include "hpp/initTensorsHelper.h"
-//#include "hpp/SDXLPipeline.h"
-#include "hpp/SDXLPipelineGranular.h"
+#include "ParseConfig.hpp"
+#include "MMapFile.h"
+#include "newInferenceHelper.hpp"
+#include "initTensorsHelper.h"
+//#include "SDXLPipeline.h"
+#include "SDXLPipelineGranular.h"
 #include "Spar3DPipeline.h"
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define LOG_TAG "SNPE_JNI"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
@@ -481,9 +484,9 @@ static jfloatArray n_runSPAR3D(JNIEnv* env, jclass, jobject assetManager,
 //    g_spar_pipe->test_spill(data, width, height);
 //    g_spar_pipe->test_imest(data, width, height);
     std::string outputPath(env->GetStringUTFChars(savePath, 0));
-    g_spar_pipe->test_sc2(data, width, height, outputPath);
+//    g_spar_pipe->test_sc2(data, width, height, outputPath);
 
-//    g_spar_pipe->overall_pipeline(data, width, height, outputPath);
+    g_spar_pipe->overall_pipeline(data, width, height, outputPath);
 
     return result;
 

@@ -5,19 +5,20 @@
 #ifndef SNPECHAININGDEMO_INITTENSORSHELPER_H
 #define SNPECHAININGDEMO_INITTENSORSHELPER_H
 
+#pragma once
 #include <string>
 #include <vector>
 #include <unistd.h>
 #include <unordered_map>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
-#include "zdl/DlSystem/DlEnums.hpp"
+#include "DlSystem/DlEnums.hpp"
 #include "TensorWorkspace.hpp"
 #include "SNPE/SNPEFactory.hpp"
 #include "ModelSession.hpp"
 #include "GraphRunner.hpp"
-#include "hpp/ParseConfig.hpp"
-#include "hpp/MMapFile.h"
+#include "ParseConfig.hpp"
+#include "MMapFile.h"
 
 #include <unordered_set>   // std::unordered_set
 #include <random>          // std::mt19937, std::normal_distribution

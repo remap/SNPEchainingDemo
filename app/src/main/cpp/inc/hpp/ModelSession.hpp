@@ -1,20 +1,27 @@
+//
+// Created by Chiheb Boussema.
+//
+
+#ifndef SNPECHAININGDEMO_MODELSESSION_H
+#define SNPECHAININGDEMO_MODELSESSION_H
+
 #pragma once
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "zdl/DlContainer/IDlContainer.hpp"
-#include "zdl/DlSystem/DlEnums.hpp"
-#include "zdl/DlSystem/StringList.hpp"
-#include "zdl/DlSystem/IUserBuffer.hpp"
-#include "zdl/DlSystem/UserBufferMap.hpp"
-#include "zdl/SNPE/SNPE.hpp"
-#include "zdl/SNPE/SNPEFactory.hpp"
-#include "zdl/SNPE/SNPEBuilder.hpp"
+#include "DlContainer/IDlContainer.hpp"
+#include "DlSystem/DlEnums.hpp"
+#include "DlSystem/StringList.hpp"
+#include "DlSystem/IUserBuffer.hpp"
+#include "DlSystem/UserBufferMap.hpp"
+#include "SNPE/SNPE.hpp"
+#include "SNPE/SNPEFactory.hpp"
+#include "SNPE/SNPEBuilder.hpp"
 
-#include "hpp/TensorTypes.hpp"
-#include "zdl/DlSystem/RuntimeList.hpp"
+#include "TensorTypes.hpp"
+#include "DlSystem/RuntimeList.hpp"
 #include "DlSystem/TensorMap.hpp"
 #include "DlSystem/ITensorFactory.hpp"
 #include "DlSystem/TensorShape.hpp"
@@ -89,3 +96,5 @@ private:
     // Helper to probe IO and fill inputs_/outputs_
     void captureIO_();
 };
+
+#endif // SNPECHAININGDEMO_MODELSESSION_H

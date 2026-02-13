@@ -3,7 +3,7 @@
 //
 
 // baker_cpu.cpp - CPU-only rasterize/interpolate implementations
-// Adapted from your original file. Two APIs provided:
+// Adapted from SPAR3D original file. Two APIs provided:
 //  - Pointer-based: low-level, no allocations, suitable for JNI
 //  - Vector wrappers: convenience, copies into typed arrays then calls pointer API
 

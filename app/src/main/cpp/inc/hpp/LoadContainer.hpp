@@ -8,6 +8,7 @@
 
 #ifndef LOADCONTAINER_H
 #define LOADCONTAINER_H
+#pragma once
 
 #include <string>
 

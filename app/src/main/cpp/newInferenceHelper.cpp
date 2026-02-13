@@ -1,19 +1,26 @@
+//
+// Created by Chiheb Boussema.
+//
+
 #include <jni.h>
 #include <string>
 #include <vector>
 #include <unistd.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
-#include "hpp/inference.h"
+#include "inference.h"
 #include "SNPE/SNPEFactory.hpp"
 #include "ModelSession.hpp"
 #include "GraphRunner.hpp"
 #include "TensorWorkspace.hpp"
 #include "MMapAsset.hpp"
-#include "hpp/ParseConfig.hpp"
-#include "hpp/MMapFile.h"
-#include "hpp/initTensorsHelper.h"
+#include "ParseConfig.hpp"
+#include "MMapFile.h"
+#include "initTensorsHelper.h"
 
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
 #define LOG_TAG "NEW_INFERENCE_HELPER"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
