@@ -1,0 +1,178 @@
+{
+  "baseDir": "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/dlc/",
+  "pipelines": [
+    {
+      "name": "preparer",
+      "models": [
+        {
+          "name": "img_preparer",
+          "asset": "spar_preparer_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "image_array": "image_array"
+          },
+          "outputs": {
+            "output_0": "rgb_cond",
+            "output_1": "mask_cond",
+            "output_2": "c2w_cond",
+            "output_3": "intrinsic_cond",
+            "output_4": "intrinsic_normed_cond"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tester_allvision",
+      "models": [
+        {
+          "name": "tester_allvision",
+          "asset": "simplified_tester_allvision_fp32_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "cond_image": "allvision_tester_tensor"
+          },
+          "outputs": {
+            "output_0": "allvision_tester_out"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pdiff_cond",
+      "models": [
+        {
+          "name": "pdiff_cond",
+          "asset": "spar_pdiff_cond_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "rgb_cond.1": "rgb_cond",
+            "mask_cond.1": "mask_cond",
+            "c2w_cond.1": "c2w_cond",
+            "intrinsic_cond.1": "intrinsic_cond",
+            "intrinsic_normed_cond.1": "intrinsic_normed_cond"
+          },
+          "outputs": {
+            "output_0": "input_image_tokens",
+            "output_1": "rgb_cond_unsq",
+            "output_2": "mask_cond_unsq",
+            "output_3": "c2w_cond_unsq",
+            "output_4": "intrinsic_cond_unsq",
+            "output_5": "intrinsic_normed_cond_unsq"
+          }
+        }
+      ]
+    },
+    {
+      "name": "one_step_denoiser",
+      "models": [
+        {
+          "name": "one_step_denoiser",
+          "asset": "spar_simplified_one_step_denoiser_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "t": "timestep",
+            "noise": "noise",
+            "condition": "condition"
+          },
+          "inputEncodings": {
+            "t": "int32"
+          },
+          "outputs": {
+            "output_0": "sample",
+            "output_1": "pred_xstart"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scene_codes1",
+      "models": [
+        {
+          "name": "scene_codes1",
+          "asset": "spar_scene_codes1_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "rgb_cond": "rgb_cond_unsq",
+            "c2w_cond": "c2w_cond_unsq",
+            "intrinsic_normed_cond": "intrinsic_normed_cond_unsq",
+            "pc_cond": "pc_cond"
+          },
+          "outputs": {
+            "output_0": "scene_codes1_out0",
+            "output_1": "scene_codes1_out1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scene_codes2",
+      "models": [
+        {
+          "name": "scene_codes2",
+          "asset": "spar_scene_codes2_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "input_image_tokens": "scene_codes1_out0",
+            "pc_embeds": "scene_codes1_out1"
+          },
+          "outputs": {
+            "output_0": "scene_codes",
+            "output_1": "non_postprocessed_codes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "triplanesToProtoMesh",
+      "models": [
+        {
+          "name": "triplanesToProtoMesh",
+          "asset": "spar_triplanesToProtoMeshNoTQReshape_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "values": "values"
+          },
+          "outputs": {
+            "output_0": "sdf",
+            "output_1": "deform"
+          }
+        }
+      ]
+    },
+    {
+      "name": "padded_decoder",
+      "models": [
+        {
+          "name": "padded_decoder",
+          "asset": "spar_decoder_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "padded_tri_query": "padded_tri_query"
+          },
+          "outputs": {
+            "output_0": "padded_features",
+            "output_1": "padded_perturb_normal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "image_estimator",
+      "models": [
+        {
+          "name": "image_estimator",
+          "asset": "spar_image_estimator_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "rgb_cond": "rgb_cond_unsq",
+            "mask_cond": "mask_cond_unsq"
+          },
+          "outputs": {
+            "output_0": "decoder_roughness",
+            "output_1": "decoder_metallic"
+          }
+        }
+      ]
+    }
+  ]
+}

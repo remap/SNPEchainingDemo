@@ -40,7 +40,7 @@
         android:id="@+id/btn_runEncoders"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="152dp"
+        android:layout_marginStart="112dp"
         android:layout_marginTop="8dp"
         android:text="Run Encoders"
         app:layout_constraintStart_toStartOf="parent"
@@ -50,7 +50,7 @@
         android:id="@+id/btn_runTokenizers"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="32dp"
+        android:layout_marginStart="8dp"
         android:layout_marginTop="8dp"
         android:text="Run Toks"
         app:layout_constraintStart_toStartOf="parent"
@@ -118,7 +118,7 @@
         android:id="@+id/btn_runSDXL"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="64dp"
+        android:layout_marginStart="8dp"
         android:layout_marginTop="56dp"
         android:text="SDXL"
         app:layout_constraintStart_toStartOf="parent"
@@ -128,9 +128,19 @@
         android:id="@+id/btn_runDecoder"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="180dp"
-        android:layout_marginTop="56dp"
+        android:layout_marginStart="276dp"
+        android:layout_marginTop="8dp"
         android:text="Decoder"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rg1" />
+
+    <Button
+        android:id="@+id/btn_pick_remove_bg"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="128dp"
+        android:layout_marginTop="56dp"
+        android:text="SPAR3D"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/rg1" />
 

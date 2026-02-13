@@ -8,7 +8,7 @@
 #include <functional>
 #include <android/log.h>
 
-#include "hpp/TensorTypes.hpp"
+#include "TensorTypes.hpp"
 
 #define  LOG_TAG_WS  "SNPE_WS"
 #define  LOGI_WS(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG_WS,__VA_ARGS__)

@@ -1,3 +1,9 @@
+import java.util.Properties
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) load(file.inputStream())
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -19,6 +25,10 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+
+        // Inject secrets into a generated BuildConfig class
+        buildConfigField("String", "HF_TOKEN", "\"${localProperties.getProperty("HF_READ_TOKEN")}\"")
+        buildConfigField("String", "HF_REPO", "\"uclaremap/pose_estimation\"")
     }
 
     packagingOptions {
@@ -51,6 +61,7 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig = true
     }
     packaging {
         jniLibs {
@@ -91,6 +102,19 @@ dependencies {
         implementation("org.bytedeco:javacpp:1.5.9")
     }
 
+    implementation("com.google.android.gms:play-services-base:18.3.0")
+    implementation("com.google.android.gms:play-services-tflite-java:16.1.0") // Often needed for the underlying runtime
+    // Google ML Kit for Subject Segmentation (Background Removal)
+    implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
+    // Core Android KTX for bitmap handling
+    implementation("androidx.core:core-ktx:1.12.0")
+
     implementation("io.getstream:photoview:1.0.3")
     implementation("com.airbnb.android:lottie:6.3.0")
+
+    // Networking and JSON
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.google.code.gson:gson:2.10.1")
+
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
 }

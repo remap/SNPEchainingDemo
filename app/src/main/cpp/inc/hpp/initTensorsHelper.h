@@ -34,7 +34,7 @@ static std::vector<std::string> computeGraphRoots(const PipelineCfg& cfg);
 
 static void fillConst(void* p, size_t bytes, float value);
 
-static void fillRandom(void* p, size_t bytes, float mean, float stddev, uint32_t seed);
+void fillRandom(void* p, size_t bytes, float mean, float stddev, uint32_t seed);
 
 static bool readFileToBuffer(const std::string& path, void* dst, size_t bytes);
 

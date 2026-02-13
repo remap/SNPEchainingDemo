@@ -54,6 +54,12 @@ public:
 
     // reset
     void reset();
+    void resetEverything() {
+        snpe_.reset();
+        container_.reset();
+        dlcBacking_.reset();
+        dlcOwner_.reset();
+    }
 
     // One-shot execution. Pointers must be valid during the call.
     // Returns elapsed ms in *elapsedMs if not null.

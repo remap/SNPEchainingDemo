@@ -136,6 +136,14 @@ std::unique_ptr<ModelSession> ModelSession::Create(const uint8_t* dlc, size_t by
             order.add(zdl::DlSystem::Runtime_t::CPU);
         }
     }// order.add(chosen);
+//    LOGI_MS("Runtime availability: DSP_unsignedpd=%d DSP=%d CPU=%d GPU=%d",
+//            zdl::SNPE::SNPEFactory::isRuntimeAvailable(zdl::DlSystem::Runtime_t::DSP, zdl::DlSystem::RuntimeCheckOption_t::UNSIGNEDPD_CHECK),
+//            zdl::SNPE::SNPEFactory::isRuntimeAvailable(zdl::DlSystem::Runtime_t::DSP),
+//            zdl::SNPE::SNPEFactory::isRuntimeAvailable(zdl::DlSystem::Runtime_t::CPU),
+//            zdl::SNPE::SNPEFactory::isRuntimeAvailable(zdl::DlSystem::Runtime_t::GPU));
+//    zdl::DlSystem::RuntimeList cpuOnly;
+//    cpuOnly.add(zdl::DlSystem::Runtime_t::CPU);
+
 
     // Choose runtime actually available (respect given order)
 //    zdl::DlSystem::Runtime_t chosen = pickFirstAvailable(opt.runtimeOrder);
@@ -178,6 +186,7 @@ std::unique_ptr<ModelSession> ModelSession::Create(const uint8_t* dlc, size_t by
     if (!self->snpe_) {
         if (buildLog) *buildLog += "SNPE build failed\n";
         LOGE_MS("SNPE build failed");
+        if (buildLog) LOGE_MS("SNPE buildLog: %s", buildLog->c_str());
         return nullptr;
     }
 

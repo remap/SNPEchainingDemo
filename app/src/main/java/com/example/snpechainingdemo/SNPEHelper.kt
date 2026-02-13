@@ -14,6 +14,10 @@ class SNPEHelper(private val app: Application)  {
         android.util.Log.i("SNPE_CHAINING", res)
     }
 
+    interface PreprocessCallback {
+        fun onPreprocessComplete(data: FloatArray)
+    }
+
     companion object {
         init {
             System.loadLibrary("snpechainingdemo")
@@ -81,6 +85,12 @@ class SNPEHelper(private val app: Application)  {
         @JvmStatic
         external fun runSDXLWhole(assetManager: android.content.res.AssetManager,
                              ids1: IntArray, ids2: IntArray, decode_only: Boolean, init_only: Boolean) : FloatArray
+
+
+        @JvmStatic
+        external fun runSPAR3D(assetManager: AssetManager, buffer: ByteBuffer, width: Int, height: Int,
+                               savePath: String,
+                               callback: PreprocessCallback): FloatArray
 
     }
 

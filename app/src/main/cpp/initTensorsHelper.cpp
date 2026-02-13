@@ -48,7 +48,7 @@ static void fillConst(void* p, size_t bytes, float value) {
 }
 
 // Gaussian random
-static void fillRandom(void* p, size_t bytes, float mean, float stddev, uint32_t seed) {
+void fillRandom(void* p, size_t bytes, float mean, float stddev, uint32_t seed) {
     size_t n = bytes / sizeof(float);
     float* f = static_cast<float*>(p);
     if (seed == 0) {
@@ -89,6 +89,7 @@ static bool seedOneTensor(TensorWorkspace& ws,
                           const InitSpec* spec,
                           AAssetManager* mgr,
                           std::string* emsg) {
+    LOGW("SEEDING TENSOR %s", wsName.c_str());
     void* ptr = ws.data(wsName);
 //    size_t bytes = ws.sizeOf(wsName);
     size_t bytes = ws.tinfoOf(wsName)->bytes();

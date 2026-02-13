@@ -37,6 +37,10 @@ public:
     void clear() {nodes_.clear();}
 
     void clear_session(Node& node) {node.session.reset();}
+    void clear_everything_in_session(Node& node) {node.session->resetEverything();}
+    void clear_everything_all_sessions() {
+        for (auto& n : nodes_) clear_everything_in_session(n);
+    }
 
     Node& last() {return nodes_.back();}
     Node& getNode(std::string name);

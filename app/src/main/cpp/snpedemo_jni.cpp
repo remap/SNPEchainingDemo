@@ -19,6 +19,7 @@
 #include "hpp/initTensorsHelper.h"
 //#include "hpp/SDXLPipeline.h"
 #include "hpp/SDXLPipelineGranular.h"
+#include "Spar3DPipeline.h"
 
 #define LOG_TAG "SNPE_JNI"
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -349,12 +350,12 @@ static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager,
 //        return env->NewStringUTF("ids length invalid");
         return env->NewFloatArray(0);
     }
-    LOGI("Here 1");
+//    LOGI("Here 1");
     jboolean isCopy1 = JNI_FALSE, isCopy2 = JNI_FALSE;
     jint* p1 = env->GetIntArrayElements(jIds1, &isCopy1);
-    LOGI("Here 2");
+//    LOGI("Here 2");
     jint* p2 = env->GetIntArrayElements(jIds2, &isCopy2);
-    LOGI("Here 3");
+//    LOGI("Here 3");
     if (!p1 || !p2) {
         if (p1) env->ReleaseIntArrayElements(jIds1, p1, JNI_ABORT);
         if (p2) env->ReleaseIntArrayElements(jIds2, p2, JNI_ABORT);
@@ -429,6 +430,65 @@ static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager,
 
 //    return env->NewStringUTF(execution_summary.c_str());
 }
+
+static jfloatArray n_runSPAR3D(JNIEnv* env, jclass, jobject assetManager,
+                               jobject byteBuffer, // Direct ByteBuffer from Kotlin
+                               jint width, jint height,
+                               jstring savePath,
+                               jobject callback) {
+//    std::string config_filename = "SparEliteConfig.json";
+    std::string config_filename = "SparEliteNewSC2Config.json";
+    std::string log;
+    bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
+    AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
+
+    std::unique_ptr<TensorWorkspace> ws_spar; // holds workspace tensors
+    ws_spar.reset(new TensorWorkspace());
+    std::unique_ptr<Spar3DPipeline> g_spar_pipe;
+    g_spar_pipe.reset(new Spar3DPipeline(mgr,
+                                         "",
+                                         config_filename,
+                                         *ws_spar));
+
+    // 1. Get pointer to data
+    uint8_t* data = (uint8_t*)env->GetDirectBufferAddress(byteBuffer);
+    std::vector<float> processed_image = g_spar_pipe->preprocessImage(data, width, height);
+    jfloatArray result = env->NewFloatArray(processed_image.size());
+    env->SetFloatArrayRegion(result, 0, processed_image.size(), processed_image.data());
+
+    // --- TRIGGER CALLBACK HERE ---
+    if (callback != nullptr) {
+        // 1. Get the class of the callback object
+        jclass cbClass = env->GetObjectClass(callback);
+        // 2. Get the Method ID: onPreprocessComplete(float[]) -> void
+        jmethodID methodID = env->GetMethodID(cbClass, "onPreprocessComplete", "([F)V");
+        // 3. Call the method
+        if (methodID != nullptr) {
+            env->CallVoidMethod(callback, methodID, result);
+        }
+        // 4. Clean up local ref for class (optional but good practice)
+        env->DeleteLocalRef(cbClass);
+    }
+    // -----------------------------
+    // 2. initialize networks
+    bool init_networks_successful = false;
+    init_networks_successful = g_spar_pipe->init_networks('D');
+    if (!init_networks_successful) {
+        LOGE("[JNI:] Network initialization failed!");
+        return nullptr;
+    }
+
+//    g_spar_pipe->test_spill(data, width, height);
+//    g_spar_pipe->test_imest(data, width, height);
+    std::string outputPath(env->GetStringUTFChars(savePath, 0));
+    g_spar_pipe->test_sc2(data, width, height, outputPath);
+
+//    g_spar_pipe->overall_pipeline(data, width, height, outputPath);
+
+    return result;
+
+}
+
 
 // ------------ Native implementations (static) ------------
 //static jstring n_buildTwoModelGraph(JNIEnv* env, jclass /*cls*/,
@@ -733,6 +793,7 @@ static const JNINativeMethod kMethods[] = {
         {"runSDXL", "(Landroid/content/res/AssetManager;[I[I)Ljava/lang/String;", (void*) n_runSDXL},
 //        {"runSDXLWhole", "(Landroid/content/res/AssetManager;[I[I)Ljava/lang/String;", (void*) n_runSDXLWhole},
         {"runSDXLWhole", "(Landroid/content/res/AssetManager;[I[IZZ)[F", (void*) n_runSDXLWhole},
+        {"runSPAR3D", "(Landroid/content/res/AssetManager;Ljava/nio/ByteBuffer;IILjava/lang/String;Lcom/example/snpechainingdemo/SNPEHelper$PreprocessCallback;)[F", (void*) n_runSPAR3D}
 };
 
 

@@ -231,7 +231,11 @@ bool SDXLPipelineGranular::init_text_encoders(
 
 
 
-    if (!&enc_gr_) return false;
+//    if (!&enc_gr_) return false;
+    if (enc_gr_.last().session == nullptr) {
+        LOGE("GraphRunner session for the encoders is invalid!");
+        return false;
+    }
 
     std::string input_name = enc_gr_.last().session->inputs().back().name;
     LOGI("[INPUT NAME FOR ENCODER:] %s", input_name.c_str());
