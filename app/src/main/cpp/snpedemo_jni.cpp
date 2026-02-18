@@ -336,7 +336,10 @@ static jfloatArray n_runSDXLWhole(JNIEnv* env, jclass, jobject assetManager,
 
 //    std::string allModels_config_filename = "Granular_allModelsConfigNewCalib8Elite.json"; // change name as needed
 //    std::string allModels_config_filename = "C_Granular_allModelsConfigNewCalib8Elite.json"; // change name as needed
-    std::string allModels_config_filename = "FP32_Granular_allModelsConfigNewCalib8Elite.json"; // change name as needed
+
+//    std::string allModels_config_filename = "FP32_Granular_allModelsConfigNewCalib8Elite.json"; // change name as needed
+
+    std::string allModels_config_filename = "SDXL_FP32_aimetONNX_ModelsConfig8Elite.json"; // change name as needed
     std::string log;
     bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
     AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);

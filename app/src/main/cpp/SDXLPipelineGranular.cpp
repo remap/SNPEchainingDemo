@@ -31,6 +31,19 @@
 //    }
 //}
 
+static size_t readProcessRssKb() {
+    // Read /proc/self/statm: fields are (pages): size resident share text lib data dt
+    std::ifstream ifs("/proc/self/statm");
+    if (!ifs) return 0;
+    long size_pages = 0, rss_pages = 0;
+    ifs >> size_pages >> rss_pages;
+    ifs.close();
+    long page_size_kb = sysconf(_SC_PAGESIZE) / 1024;
+    if (page_size_kb <= 0) page_size_kb = 4; // fallback
+    return static_cast<size_t>(rss_pages) * static_cast<size_t>(page_size_kb);
+}
+
+
 inline void logNumbers(const float* p, const TensorInfo& t, const std::string& wsName, const size_t& n=8, const char logLevel='i', const char* initLog="") {
     std::string vals;
     size_t count = std::min<size_t>(n, t.numel());
@@ -595,7 +608,7 @@ inline bool dumpFloatTensor(const std::string &path, const float* data, size_t n
 void SDXLPipelineGranular::unet_wrapper2(const float t) {
 
     std::string unet_execution_summary;
-    const bool reset_sessions = true;
+    const bool reset_sessions = false; //true;
     // 1. time embeddings:
 //    t_emb = self.get_time_embed(sample=sample, timestep=timestep)
 //    emb = self.time_embedding(t_emb, timestep_cond)
@@ -694,17 +707,22 @@ void SDXLPipelineGranular::unet_wrapper2(const float t) {
     auto& tinfos00 = unet_.unet_upblock00->last().session.get()->outputs();
     LOGW("HIDDEN STATES OF UPBLOCK00 DIMENSION:");
     for (auto& tnfo : tinfos00) {
-        if (tnfo.name == nominal_output_name) {
+//        if (tnfo.name == nominal_output_name)
+        {
+            LOGW("%s", tnfo.name.c_str());
             for (auto& d : tnfo.dims) {
                 LOGW("%lu", d);
             }
         }
+        break;
     }
 
     const auto& tinfos01 = unet_.unet_upblock01->last().session.get()->outputs();
     LOGW("HIDDEN STATES OF UPBLOCK01 DIMENSION:");
     for (auto& tnfo : tinfos01) {
-        if (tnfo.name == nominal_output_name) {
+//        if (tnfo.name == nominal_output_name)
+        {
+            LOGW("%s", tnfo.name.c_str());
             auto strides = computePackedStridesBytes(tnfo.dims, tnfo.elementBytes);
             for (auto& d : tnfo.dims) {
                 LOGW("%lu", d);
@@ -714,6 +732,7 @@ void SDXLPipelineGranular::unet_wrapper2(const float t) {
                 LOGW("%lu", d);
             }
         }
+        break;
     }
 
     const auto hidden_states_wsName = unet_.unet_upblock02->getNode("upblock02").inputBinding.at("hidden_states");
@@ -733,7 +752,9 @@ void SDXLPipelineGranular::unet_wrapper2(const float t) {
     LOGI("Transposing...");
 //    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
     // transpose the output of upblock00 to input upblock01 -----------------------------------
-    const auto& out_hidden_00_wsName = unet_.unet_upblock00->last().outputBinding.at(nominal_output_name);
+    const auto& up00_outputs = unet_.unet_upblock00->last().session.get()->outputs();
+    const auto& up00_output_name = up00_outputs[0].name;
+    const auto& out_hidden_00_wsName = unet_.unet_upblock00->last().outputBinding.at(up00_output_name);//nominal_output_name);
     auto* out_hidden_00 = static_cast<float*>(ws_.data(out_hidden_00_wsName));
     const auto& out_hidden_00_tinfo = ws_.tinfoOf(out_hidden_00_wsName);
     LOGI("out hidden 00 (%s) numel: %lu", out_hidden_00_wsName.c_str(), out_hidden_00_tinfo->numel());
@@ -743,23 +764,40 @@ void SDXLPipelineGranular::unet_wrapper2(const float t) {
     const auto& in_hidden_01_tinfo = ws_.tinfoOf(in_hidden_01_wsName);
     LOGI("in hidden 01 (%s) numel: %lu", in_hidden_01_wsName.c_str(), in_hidden_01_tinfo->numel());
 
-    nhwc_to_nchw(in_hidden_01, out_hidden_00, 1, 32, 32, 1280);
+    // if channel transposed --> rectify
+    if (out_hidden_00_tinfo->dims[3] == in_hidden_01_tinfo->dims[1]) {
+        LOGI("Transposing...");
+        nhwc_to_nchw(in_hidden_01, out_hidden_00, 1, 32, 32, 1280);
+    }
+//    nhwc_to_nchw(in_hidden_01, out_hidden_00, 1, 32, 32, 1280);
 
 
     LOGI("Running upblock 01...");
     unet_execution_summary += runGraph(*unet_.unet_upblock01, reset_sessions);
-    LOGI("Transposing...");
+
 //    transpose_inplace_nhwc_nchw(hidden_states, 1, 1280, 32, 32);
-    // transpose the output of upblock00 to input upblock01 -----------------------------------
-    const auto& out_hidden_01_wsName = unet_.unet_upblock01->last().outputBinding.at(nominal_output_name);
+    // transpose the output of upblock01 to input upblock02 -----------------------------------
+    const auto& up01_outputs = unet_.unet_upblock01->last().session.get()->outputs();
+//    {
+//        const auto& up01_outputs = unet_.unet_upblock01->last().session.get()->outputs();
+//        LOGW("OUTPUTS OF UP01:");
+//        for (const auto& p : up01_outputs) LOGW("%s", p.name.c_str());
+//    }
+    const auto& up01_output_name = up01_outputs[0].name;
+    const auto& out_hidden_01_wsName = unet_.unet_upblock01->last().outputBinding.at(up01_output_name);//nominal_output_name);
     auto* out_hidden_01 = static_cast<float*>(ws_.data(out_hidden_01_wsName));
     LOGI("out hidden 01 (%s)", out_hidden_01_wsName.c_str());
+    const auto& out_hidden_01_tinfo = ws_.tinfoOf(out_hidden_01_wsName);
 
     const auto& in_hidden_02_wsName = unet_.unet_upblock02->getNode("upblock02").inputBinding.at("hidden_states");
     auto* in_hidden_02 = static_cast<float*>(ws_.data(in_hidden_02_wsName));
     LOGI("in hidden 02 (%s)", in_hidden_02_wsName.c_str());
+    const auto& in_hidden_02_tinfo = ws_.tinfoOf(in_hidden_02_wsName);
 
-    nhwc_to_nchw(in_hidden_02, out_hidden_01, 1, 32, 32, 1280);
+    if (out_hidden_01_tinfo->dims[3] == in_hidden_02_tinfo->dims[1]) {
+        LOGI("Transposing...");
+        nhwc_to_nchw(in_hidden_02, out_hidden_01, 1, 32, 32, 1280);
+    }
 
     const auto& tinfos = unet_.unet_upblock02->getNode("upblock02").session.get()->inputs();
     LOGW("HIDDEN STATES OF BLOCK02 DIMENSION:");
@@ -780,7 +818,11 @@ void SDXLPipelineGranular::unet_wrapper2(const float t) {
     if (false) {
         load_tensors("up1");
     }
+    auto up1_start = std::chrono::high_resolution_clock::now();
     unet_execution_summary += runGraph(*unet_.unet_upblock1, reset_sessions);
+    auto up1_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> up1_elapsed = up1_end - up1_start;
+    LOGW("UP1 runtime: %f s", up1_elapsed.count());
 //    auto *up1_output = static_cast<float*>(ws_.data("latent_sample"));
 //    auto up1_tinfo = ws_.tinfoOf("latent_sample");
 //    dumpFloatTensor("/sdcard/Android/data/com.example.snpechainingdemo/files/up1_output_CPU.bin",
@@ -912,11 +954,15 @@ std::vector<float> SDXLPipelineGranular::overall_pipeline(const int32_t* ids1_77
         }
     } else {
 
+        // Text encoders
+        LOGI("RSS before text encoders: %zu KB", readProcessRssKb());
         log = run_encoders(ids1_77, ids2_77);
         auto *encoder_hidden_states = static_cast<float *>(ws_.data("encoder_hidden_states"));
         const auto &encoder_hidden_states_tinfo = ws_.tinfoOf("encoder_hidden_states");
         logNumbers(encoder_hidden_states, *encoder_hidden_states_tinfo, "encoder_hidden_states", 8,
                    'w', "Encoder Hidden States:");
+        enc_gr_.clear_everything_all_sessions();
+        LOGI("RSS after clearing text encoders: %zu KB", readProcessRssKb());
 
 
         std::vector<float> timesteps;
@@ -1056,6 +1102,15 @@ std::vector<float> SDXLPipelineGranular::overall_pipeline(const int32_t* ids1_77
         //        LOGE("[Pipeline:] Could not read from file!");
         //    }
     }
+    LOGI("RSS before releasing unet: %zu KB", readProcessRssKb());
+    unet_.unet_db1->clear_everything_all_sessions();
+    unet_.unet_db2->clear_everything_all_sessions();
+    unet_.unet_mb->clear_everything_all_sessions();
+    unet_.unet_upblock00->clear_everything_all_sessions();
+    unet_.unet_upblock01->clear_everything_all_sessions();
+    unet_.unet_upblock02->clear_everything_all_sessions();
+    unet_.unet_upblock1->clear_everything_all_sessions();
+    LOGI("RSS after releasing unet: %zu KB", readProcessRssKb());
 
 
     for (size_t i = 0; i < latent_elems; ++i) latents[i] /= net_config_.vae_config_scaling_factor;

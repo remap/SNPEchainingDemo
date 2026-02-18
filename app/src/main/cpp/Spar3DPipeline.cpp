@@ -24,7 +24,7 @@
 #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
 
 
-size_t readProcessRssKb() {
+static size_t readProcessRssKb() {
     // Read /proc/self/statm: fields are (pages): size resident share text lib data dt
     std::ifstream ifs("/proc/self/statm");
     if (!ifs) return 0;
