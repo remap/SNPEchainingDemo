@@ -486,8 +486,12 @@ static jfloatArray n_runSPAR3D(JNIEnv* env, jclass, jobject assetManager,
 
 //    g_spar_pipe->test_spill(data, width, height);
 //    g_spar_pipe->test_imest(data, width, height);
+
     std::string outputPath(env->GetStringUTFChars(savePath, 0));
 //    g_spar_pipe->test_sc2(data, width, height, outputPath);
+
+//    g_spar_pipe->test_export(outputPath);
+//    g_spar_pipe->test_chunkedDecoder(outputPath);
 
     g_spar_pipe->overall_pipeline(data, width, height, outputPath);
 

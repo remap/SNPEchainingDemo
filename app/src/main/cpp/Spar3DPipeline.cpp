@@ -536,7 +536,8 @@ std::vector<float> Spar3DPipeline::preprocessImage(uint8_t* pixelData, int width
 
     size_t shape = tgt_size * tgt_size * 4;
     std::vector<float> result(shape);
-    preprocessImage(pixelData, width, height, result.data(), shape, tgt_size, _01, HWC);
+//    preprocessImage(pixelData, width, height, result.data(), shape, tgt_size, _01, HWC);
+    preprocessImageNew(pixelData, width, height, result.data(), shape, tgt_size, _01, HWC);
     return result;
 
     // 1. Wrap the Android pixel data in a cv::Mat (Zero copy if possible)
@@ -704,24 +705,37 @@ void Spar3DPipeline::preprocessImage(uint8_t* pixelData, int width, int height, 
     // We want to map the square region centered at (xc, yc) with size 'scale_source'
     // into a 512x512 destination image.
     float target_size = (float)tgt_size; // 512.0f;
-    float s = 1.0f;// target_size / scale_source;
+//    float s = 1.0f;// target_size / scale_source;
+//
+//    // Affine Matrix: [ s  0  tx ]
+//    //                [ 0  s  ty ]
+//    float tx = xc - (scale_source * 0.5f) ;
+//    float ty = yc - (scale_source * 0.5f) ;
 
-    // Affine Matrix: [ s  0  tx ]
-    //                [ 0  s  ty ]
-    float tx = xc - (scale_source * 0.5f) ;
-    float ty = yc - (scale_source * 0.5f) ;
+    float s = target_size / scale_source;
+    // Translation: Shift the source center (xc, yc) to the target center (256, 256)
+    float target_center = target_size * 0.5f;
+    float tx = target_center - (xc * s);
+    float ty = target_center - (yc * s);
 
     cv::Mat M = (cv::Mat_<double>(2, 3) << s, 0, tx, 0, s, ty);
 
     // 5. Warp (Crop + Center in one step)
-    cv::Mat warped; // = original.clone();
-    cv::warpAffine(original, warped, M,  cv::Size((int)scale_source, (int)scale_source),
-                   cv::INTER_LINEAR | cv::WARP_INVERSE_MAP, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)
-                   );
+//    cv::Mat warped; // = original.clone();
+//    cv::warpAffine(original, warped, M,  cv::Size((int)scale_source, (int)scale_source),
+//                   cv::INTER_LANCZOS4 | cv::WARP_INVERSE_MAP, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0)
+//                   );
+
+    // 5. Warp directly to the final size in ONE step!
+    cv::Mat resizedImg;
+    // Note: We use INTER_LANCZOS4 for high-quality downscaling, and we DO NOT use WARP_INVERSE_MAP
+    // because we built a forward-mapping matrix.
+    cv::warpAffine(original, resizedImg, M, cv::Size(tgt_size, tgt_size),
+                   cv::INTER_CUBIC, cv::BORDER_CONSTANT, cv::Scalar(0,0,0,0));
 
     // 6. Resize to target size
-    cv::Mat resizedImg;
-    cv::resize(warped, resizedImg, cv::Size(tgt_size, tgt_size), 1.0, 1.0,cv::INTER_LANCZOS4);
+//    cv::Mat resizedImg;
+//    cv::resize(warped, resizedImg, cv::Size(tgt_size, tgt_size), 1.0, 1.0,cv::INTER_LANCZOS4);
 
     // Convert to Float
     const double cv_scale = _01 ? (1.0/255.0) : 1.0;
@@ -766,6 +780,122 @@ void Spar3DPipeline::preprocessImage(uint8_t* pixelData, int width, int height, 
     }
 }
 
+void Spar3DPipeline::preprocessImageNew(uint8_t* pixelData, int width, int height, float* output_buffer, const size_t output_elements, const int tgt_size, const bool _01, const bool HWC) {
+
+    // 1. Wrap the Android pixel data in a cv::Mat
+    cv::Mat original(height, width, CV_8UC4, pixelData);
+
+    // ==========================================
+    // THE ALPHA TRICK: Anti-alias the ML Kit edge
+    // ==========================================
+    std::vector<cv::Mat> channels;
+    cv::split(original, channels);
+
+    // Create a copy of the raw alpha for bounding box math so we don't mess up the coordinates
+    cv::Mat raw_alpha = channels[3].clone();
+
+    // Blur ONLY the alpha channel of the original image.
+    // This creates a soft, anti-aliased edge when composited over a 3D background,
+    // but leaves the RGB colors 100% sharp and un-smushed.
+    cv::GaussianBlur(channels[3], channels[3], cv::Size(5, 5), 0);
+    cv::merge(channels, original); // Re-pack the image with the smooth alpha
+
+    // 2. Find Bounding Box using the raw, unblurred alpha
+    cv::Mat mask;
+    cv::threshold(raw_alpha, mask, 127, 255, cv::THRESH_BINARY);
+
+    // 3. Calculate Centering Geometry (Your original logic)
+    cv::Mat col_sum, row_sum;
+    cv::reduce(mask, col_sum, 0, cv::REDUCE_MAX, CV_8U);
+    cv::reduce(mask, row_sum, 1, cv::REDUCE_MAX, CV_8U);
+
+    int min_x = -1, max_x = -1, min_y = -1, max_y = -1;
+    uint8_t* pCols = col_sum.data;
+    for (int x = 0; x < width; ++x) {
+        if (pCols[x] > 0) { if (min_x == -1) min_x = x; max_x = x; }
+    }
+    uint8_t* pRows = row_sum.data;
+    for (int y = 0; y < height; ++y) {
+        if (pRows[y] > 0) { if (min_y == -1) min_y = y; max_y = y; }
+    }
+    if (min_x == -1 || min_y == -1) {
+        min_x = 0; max_x = width - 1; min_y = 0; max_y = height - 1;
+    }
+
+    float h = max_y - min_y;
+    float w = max_x - min_x;
+    float yc = (max_y + min_y) * 0.5f;
+    float xc = (max_x + min_x) * 0.5f;
+
+    float crop_ratio = 1.3f;
+    float scale_source = std::max(h, w) * crop_ratio;
+
+    // ==========================================
+    // THE DOWNSCALING FIX: Crop & INTER_AREA
+    // ==========================================
+    // Instead of warpAffine (which causes aliasing), we calculate the exact square
+    // we want to extract, pad the image if the square goes out of bounds, crop it,
+    // and use cv::resize with INTER_AREA.
+
+    int roi_size = std::round(scale_source);
+    int roi_x = std::round(xc - (scale_source * 0.5f));
+    int roi_y = std::round(yc - (scale_source * 0.5f));
+
+    // Calculate how much transparent padding we need if the ROI bleeds off the image canvas
+    int pad_left = std::max(0, -roi_x);
+    int pad_top = std::max(0, -roi_y);
+    int pad_right = std::max(0, (roi_x + roi_size) - width);
+    int pad_bottom = std::max(0, (roi_y + roi_size) - height);
+
+    cv::Mat padded_original;
+    cv::copyMakeBorder(original, padded_original, pad_top, pad_bottom, pad_left, pad_right,
+                       cv::BORDER_CONSTANT, cv::Scalar(0, 0, 0, 0));
+
+    // Shift our ROI coordinates by the padding we just added
+    cv::Rect safe_roi(roi_x + pad_left, roi_y + pad_top, roi_size, roi_size);
+    cv::Mat cropped = padded_original(safe_roi);
+
+    // Resize using INTER_AREA. This averages the pixels instead of skipping them.
+    // This entirely eliminates the jagged internal color boundaries.
+    cv::Mat resizedImg;
+    cv::resize(cropped, resizedImg, cv::Size(tgt_size, tgt_size), 0, 0, cv::INTER_AREA);
+
+    // ==========================================
+    // Tensor Formatting (Your original logic)
+    // ==========================================
+    const double cv_scale = _01 ? (1.0/255.0) : 1.0;
+    cv::Mat float_img;
+    resizedImg.convertTo(float_img, CV_32FC4, cv_scale);
+
+    if (!float_img.isContinuous()) {
+        float_img = float_img.clone();
+    }
+
+    int num_pixels = tgt_size * tgt_size;
+    float* ptr = float_img.ptr<float>(0);
+    float* dst = output_buffer;
+    assert(output_elements >= num_pixels * 4);
+
+    if (HWC) {
+        for (int i = 0; i < num_pixels; ++i) {
+            dst[i * 4 + 0] = ptr[i * 4 + 0];
+            dst[i * 4 + 1] = ptr[i * 4 + 1];
+            dst[i * 4 + 2] = ptr[i * 4 + 2];
+            dst[i * 4 + 3] = ptr[i * 4 + 3];
+        }
+    } else {
+        float *r_plane = dst;
+        float *g_plane = dst + num_pixels;
+        float *b_plane = dst + (2 * num_pixels);
+        float *a_plane = dst + (3 * num_pixels);
+        for (int i = 0; i < num_pixels; ++i) {
+            r_plane[i] = ptr[i * 4 + 0];
+            g_plane[i] = ptr[i * 4 + 1];
+            b_plane[i] = ptr[i * 4 + 2];
+            a_plane[i] = ptr[i * 4 + 3];
+        }
+    }
+}
 
 void Spar3DPipeline::test_spill(uint8_t* img, int ori_width, int ori_height) {
     std::string execution_summary;
@@ -1122,6 +1252,144 @@ std::vector<float> Spar3DPipeline::runImageEstimator(std::string& execution_summ
     return out;
 }
 
+
+void Spar3DPipeline::test_export(const std::string& glb_output_path) {
+
+    std::vector<float> v_nrm;
+    if (!loadVectorFromAsset(mgr_, "test_export/v_nrm.bin", v_nrm)) {
+        LOGE("[TEST:] Unable to load v_nrm!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded v_nrm.");
+    std::string nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(v_nrm[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+
+    std::vector<float> v_tng;
+    if (!loadVectorFromAsset(mgr_, "test_export/v_tng.bin", v_tng)) {
+        LOGE("[TEST:] Unable to load v_tng!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded v_tng.");
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(v_tng[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    std::vector<float> v_pos;
+    if (!loadVectorFromAsset(mgr_, "test_export/v_pos.bin", v_pos)) {
+        LOGE("[TEST:] Unable to load v_pos!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded v_pos.");
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(v_pos[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    std::vector<float> v_tex;
+    if (!loadVectorFromAsset(mgr_, "test_export/v_tex.bin", v_tex)) {
+        LOGE("[TEST:] Unable to load v_tex!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded v_tex.");
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(v_tex[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    std::vector<int64> t_pos_idx_64;
+    if (!loadVectorFromAsset(mgr_, "test_export/t_pos_idx.bin", t_pos_idx_64)) {
+        LOGE("[TEST:] Unable to load t_pos_idx!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded t_pos_idx.");
+    std::vector<int> t_pos_idx(t_pos_idx_64.begin(), t_pos_idx_64.end());
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(t_pos_idx[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    std::vector<float> rast;
+    if (!loadVectorFromAsset(mgr_, "test_export/rast.bin", rast)) {
+        LOGE("[TEST:] Unable to load rast!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded rast.");
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(rast[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    std::vector<uint8_t> bake_mask;
+    if (!loadVectorFromAsset(mgr_, "test_export/bake_mask.bin", bake_mask)) {
+        LOGE("[TEST:] Unable to load bake_mask!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded bake_mask.");
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(bake_mask[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    std::vector<float> features;
+    if (!loadVectorFromAsset(mgr_, "test_export/features.bin", features)) {
+        LOGE("[TEST:] Unable to load features!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded features.");
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(features[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    std::vector<float> perturb_normal;
+    if (!loadVectorFromAsset(mgr_, "test_export/perturb_normal.bin", perturb_normal)) {
+        LOGE("[TEST:] Unable to load perturb_normal!");
+        return;
+    }
+    LOGI("[TEST:] Successfully loaded perturb_normal.");
+    nlog = "";
+    for (size_t i = 0; i < 10; ++i) nlog += std::to_string(perturb_normal[i]) + ", ";
+    LOGW("%s", nlog.c_str());
+
+    float roughness = 0.259f;
+    float metallic = 0.0f;
+
+    MeshCPP mesh_cpp(v_pos,
+                     t_pos_idx,
+                     v_nrm,
+                     v_tng,
+                     v_tex);
+
+    LOGI("[Pipeline:] Building textures...");
+    auto texture_start = std::chrono::high_resolution_clock::now();
+    texture_baker_cpp::BuildTexturesInspect inspect = texture_baker_cpp::BuildTextures_SaveImages(
+            v_nrm.data(), v_nrm.size(),
+            v_tng.data(), v_tng.size(),
+            v_pos.data(), v_pos.size(),
+            v_tex.data(), v_tex.size(),
+            t_pos_idx.data(), t_pos_idx.size(),
+            rast.data(),
+            bake_mask.data(),
+            inf_config_.bake_resolution,inf_config_.bake_resolution,
+            features.data(), // it's ok to put the padded version as we internally only take the valid size given bake_mask
+            perturb_normal.data(),
+            roughness,
+            metallic,
+            "basecolor.jpg", "bump.jpg", false
+            );
+    auto texture_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> texture_elapsed = texture_end - texture_start;
+    LOGW("Texture building runtime: %f s", texture_elapsed.count());
+
+    // call glb exporter
+    LOGI("[Pipeline:] Exporting to glb...");
+    auto export_start = std::chrono::high_resolution_clock::now();
+
+    bool export_success = texture_baker_cpp::ExportGLBFromInspect(inspect,
+                                                                  mesh_cpp,
+                                                                  glb_output_path);
+
+    auto export_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> export_elapsed = export_end - export_start;
+    LOGW("GLB export runtime: %f s", export_elapsed.count());
+}
+
 void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_height, const std::string& glb_output_path) {
     std::string execution_summary;
     const bool reset_sessions = false;
@@ -1137,7 +1405,7 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
         LOGI("%zu", d);
     }
     assert(input_img_tinfo->numel() == inf_config_.img_height * inf_config_.img_width * 4);
-    preprocessImage(img, ori_width, ori_height,
+    preprocessImageNew(img, ori_width, ori_height,
                     input_img_array, input_img_tinfo->numel(),
                     inf_config_.img_width, true, true);
 
@@ -1333,8 +1601,8 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     const auto& scene_codes_tinfo = ws_.tinfoOf(scene_codes_wsName);
     auto* scene_codes = static_cast<float*>(ws_.data(scene_codes_wsName));
     {
-//        std::string scene_codes_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/scene_codes_dump.bin";
-//        dump_tensor_to_file(scene_codes_dump_path.c_str(), scene_codes, scene_codes_tinfo->numel());
+        std::string scene_codes_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_scene_codes_dump.bin";
+        dump_tensor_to_file(scene_codes_dump_path.c_str(), scene_codes, scene_codes_tinfo->numel());
 //        if (!readFileToBuffer(scene_codes_dump_path, scene_codes, scene_codes_tinfo->bytes())) LOGE("COULD NOT READ SCENE_CODES FROM FILE!");
         // some logging
         std::string scene_codes_log = "scene codes dims: ";
@@ -1437,8 +1705,8 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     std::chrono::duration<double> elapsed = exp_end - exp_start;
     LOGW("exp of sdf runtime: %f s", elapsed.count());
 
-//    sdf_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/sdfLocalExp_dump.bin";
-//    dump_tensor_to_file(sdf_dump_path.c_str(), sdf, sdf_tinfo->numel());
+    std::string sdf_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_sdf_dump.bin";
+    dump_tensor_to_file(sdf_dump_path.c_str(), sdf, sdf_tinfo->numel());
 //    LOGW("SDF at various indeces: %f, %f, %f, %f, %f, %f", sdf[127129],
 //                                                                sdf[127455],
 //                                                                sdf[127458],
@@ -1461,6 +1729,8 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     const auto deformation_wsName = gr_runners_.triplanesToProtoMesh->last().outputBinding.at("output_1");
     auto* deformation = static_cast<float*>(ws_.data(deformation_wsName));
     const auto& deformation_tinfo = ws_.tinfoOf(deformation_wsName);
+    std::string deformation_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_deformation_dump.bin";
+    dump_tensor_to_file(deformation_dump_path.c_str(), deformation, deformation_tinfo->numel());
 
     {
         bool sdf_nan = false;
@@ -1506,9 +1776,12 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
 
     // mesh.unwrap_uv
     LOGI("[Pipeline:] unwrapping uv...");
+    LOGW("INIT MESH V_POS size: %lu, T_POS_IDX size: %lu", mesh.v_pos.size()/3, mesh.t_pos_idx.size()/3);
     std::vector<int> indices_int(mesh.t_pos_idx.begin(), mesh.t_pos_idx.end());
     MeshCPP mesh_cpp(mesh.v_pos, indices_int);
+    LOGW("[1] MESH_CPP V_POS size: %lu, T_POS_IDX size: %lu", mesh_cpp.v_pos().size()/3, mesh_cpp.t_pos_idx().size()/3);
     mesh_cpp.unwrap_uv();
+    LOGW("[2] MESH_CPP V_POS size: %lu, T_POS_IDX size: %lu", mesh_cpp.v_pos().size()/3, mesh_cpp.t_pos_idx().size()/3);
 
     // rasterize, get mask, interpolate, gb_pos
     const int N = mesh_cpp.t_pos_idx().size() / 3; // t_pos_idx is Nx3 (flattened)
@@ -1547,9 +1820,9 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     // construct gb_pos = pos_bake[bake_mask]
     LOGI("[Pipeline:] constructing gb_pos...");
     const std::string gb_pos_wsName = "gb_pos";
-    TensorInfo gb_pos_tinfo;
-    gb_pos_tinfo.name = gb_pos_wsName;
-    gb_pos_tinfo.dims = {};
+//    TensorInfo gb_pos_tinfo;
+//    gb_pos_tinfo.name = gb_pos_wsName;
+//    gb_pos_tinfo.dims = {};
     LOGI("[Pipeline:] calling compact_masked_parallel...");
     LOGW("RSS: %zu KB", readProcessRssKb());
     int num_valid_points = compact_masked_parallel(&gb_pos_wsName, pos_bake.data(), bake_mask.data(), num_pixels, &ws_);
@@ -1557,30 +1830,192 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     if (!gb_pos) {
         LOGE("gb_pos was not found in workspace!");
         return;
-    } else {
-        const auto& gb_pos_tinfo = ws_.tinfoOf(gb_pos_wsName);
-        std::string gb_pos_log = "gb_pos dims: ";
-        for (const auto& d : gb_pos_tinfo->dims) gb_pos_log += std::to_string(d)+" ";
-        LOGW("[Pipeline:] %s", gb_pos_log.c_str());
-        logNumbers(gb_pos, *gb_pos_tinfo, gb_pos_wsName, 12, 'w');
     }
+    const auto& gb_pos_tinfo = ws_.tinfoOf(gb_pos_wsName);
+    std::string gb_pos_log = "gb_pos dims: ";
+    for (const auto& d : gb_pos_tinfo->dims) gb_pos_log += std::to_string(d)+" ";
+    LOGW("[Pipeline:] %s", gb_pos_log.c_str());
+    logNumbers(gb_pos, *gb_pos_tinfo, gb_pos_wsName, 12, 'w');
+
     // tri_query = spar3d_model.query_triplane(gb_pos, triplane)[0]
-    LOGI("[Pipeline:] running query triplane on gb_pos to get tri_query...");
+    // Decoder was exported with a static input of dimension 300'000
+    // in some cases however, we exceed that dimension and need to account for this.
+    // Fortunately, the decoder operations are row-wise separable,
+    // so we can simply call the decoder on chunks of 300'000 then concatenate.
+    // We first need to query triplane on chunks of gb_pos and put the outputs into
+    // the padded_tri_query_dec tensor whose number of rows = 300'000, call the decoder on this
+    // and repeat.
+//    LOGI("[Pipeline:] running query triplane on gb_pos to get tri_query...");
+    LOGI("[Pipeline:] Onto query triplane and decoding...");
     const auto padded_tri_query_dec_wsName = gr_runners_.padded_decoder->last().inputBinding.at("padded_tri_query");
     auto* padded_tri_query_dec = static_cast<float*>(ws_.data(padded_tri_query_dec_wsName));
     const auto& padded_tri_query_dec_tinfo = ws_.tinfoOf(padded_tri_query_dec_wsName);
-    assert(padded_tri_query_dec_tinfo->dims[0] >= num_valid_points);
-    query_triplane_optimized(gb_pos, scene_codes, padded_tri_query_dec, num_valid_points,
+
+    const auto padded_features_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_0");
+    const auto padded_perturb_normal_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_1");
+    const auto& padded_features_tinfo = ws_.tinfoOf(padded_features_wsName);
+    const auto& padded_perturb_normal_tinfo = ws_.tinfoOf(padded_perturb_normal_wsName);
+    auto* padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
+    auto* padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
+    std::string padded_features_final_wsName = padded_features_wsName; //"padded_features_final";
+    std::string padded_perturb_normal_final_wsName = padded_perturb_normal_wsName; //"padded_perturb_normal_final";
+
+    if (num_valid_points > padded_tri_query_dec_tinfo->dims[0]) {
+        const auto dec_n = padded_tri_query_dec_tinfo->dims[0];
+        LOGW("[Pipeline:] Number of valid points exceeds expected (%lu). Splitting operations for the triplane_query.", dec_n);
+//        size_t n = static_cast<size_t>(std::ceil(num_valid_points / dec_n)); // this won't work as it's doing integer division, so ceil won't work as intended
+        size_t n = (num_valid_points + dec_n - 1) / dec_n;
+        LOGI("n = %lu", n);
+
+        size_t gb_pos_elements_per_row = 1;
+        for (size_t i = 1; i < gb_pos_tinfo->dims.size(); ++i) gb_pos_elements_per_row *= gb_pos_tinfo->dims[i];
+
+        // prepare things for the decoder ------------------
+        padded_features_final_wsName = "padded_features_final";
+        padded_perturb_normal_final_wsName = "padded_perturb_normal_final";
+
+        TensorInfo padded_features_final_tinfo;
+        padded_features_final_tinfo.name = padded_features_final_wsName;
+        padded_features_final_tinfo.dims = padded_features_tinfo->dims;
+        padded_features_final_tinfo.dims[0] = num_valid_points;
+
+        TensorInfo padded_perturb_normal_final_tinfo;
+        padded_perturb_normal_final_tinfo.name = padded_perturb_normal_final_wsName;
+        padded_perturb_normal_final_tinfo.dims = padded_perturb_normal_tinfo->dims;
+        padded_perturb_normal_final_tinfo.dims[0] = num_valid_points;
+
+        std::string ws_msg = "";
+        if (!ensureWorkspaceBuffer(ws_, padded_features_final_wsName, padded_features_final_tinfo, &ws_msg)) {
+            LOGE("[Pipeline:] Could not allocate a buffer for %s !", padded_features_final_wsName.c_str());
+            return;
+        }
+        if (!ensureWorkspaceBuffer(ws_, padded_perturb_normal_final_wsName, padded_perturb_normal_final_tinfo, &ws_msg)) {
+            LOGE("[Pipeline:] Could not allocate a buffer for %s !", padded_perturb_normal_final_wsName.c_str());
+            return;
+        }
+        auto* padded_features_final = static_cast<float*>(ws_.data(padded_features_final_wsName));
+        auto* padded_perturb_normal_final = static_cast<float*>(ws_.data(padded_perturb_normal_final_wsName));
+        size_t elements_per_row = 1;
+        for (size_t i = 1; i < padded_features_tinfo->dims.size(); ++i) elements_per_row *= padded_features_tinfo->dims[i];
+
+        // After ensureWorkspaceBuffer:
+//        gb_pos = static_cast<float*>(ws_.data(gb_pos_wsName));
+//        padded_tri_query_dec = static_cast<float*>(ws_.data(padded_tri_query_dec_wsName));
+//        padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
+//        padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
+        // --------------------------------------------
+        // call query_triplane then decoder on chunks
+        for (size_t k = 0; k < n; ++k) {
+
+            size_t actual_n = (k == n-1) ? (num_valid_points - (n-1)*dec_n) : dec_n;
+
+            // query triplane:
+            // zero-copy slice: offset the pointer to the start of the chunk, and pass the number of rows later
+            float* gb_pos_chunk = gb_pos + (k * dec_n * gb_pos_elements_per_row);
+            LOGI("[Pipeline:] running query_triplane_optimized loop, iteration %lu", k);
+            query_triplane_optimized(gb_pos_chunk, scene_codes, padded_tri_query_dec, actual_n, //dec_n,
                              scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
                              inf_config_.radius);
 
-    LOGI("[Pipeline:] Running decoder...");
-    execution_summary += runGraph(*gr_runners_.padded_decoder, reset_sessions);
-    const auto padded_features_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_0");
-    auto* padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
+            // call decoder
+            LOGI("[Pipeline:] running padded_decoder loop, iteration %lu", k);
+            execution_summary += runGraph(*gr_runners_.padded_decoder, false);
+            std::memset(padded_tri_query_dec, 0, padded_tri_query_dec_tinfo->bytes()); // reset to 0
+            // copy results into final tensors
+            auto* dst_features = padded_features_final + k*padded_features_tinfo->numel();
+            auto* dst_normals = padded_perturb_normal_final + k*padded_perturb_normal_tinfo->numel();
+            size_t bytes_to_copy = actual_n * elements_per_row * padded_features_tinfo->elementBytes;
+            LOGW("number copied: %lu", actual_n*elements_per_row);
+            std::memcpy(dst_features, padded_features, bytes_to_copy);
+            std::memcpy(dst_normals, padded_perturb_normal, bytes_to_copy);
+            // reset features and normals
+            std::memset(padded_features, 0, padded_features_tinfo->bytes());
+            std::memset(padded_perturb_normal, 0, padded_perturb_normal_tinfo->bytes());
+//            break; // TODO remove
+        }
+    }
 
-    const auto padded_perturb_normal_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_1");
-    auto* padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
+
+
+//    assert(padded_tri_query_dec_tinfo->dims[0] >= num_valid_points);
+
+
+//    LOGI("[Pipeline:] Running decoder...");
+//    if (num_valid_points > padded_tri_query_dec_tinfo->dims[0]) {
+//        const auto dec_n = padded_tri_query_dec_tinfo->dims[0];
+//        LOGW("[Pipeline:] Number of valid points exceeds expected (%lu). Splitting operations for the decoder.", dec_n);
+//        size_t n = static_cast<size_t>(std::ceil(num_valid_points / dec_n));
+
+//        padded_features_final_wsName = "padded_features_final";
+//        padded_perturb_normal_final_wsName = "padded_perturb_normal_final";
+//
+//        TensorInfo padded_features_final_tinfo;
+//        padded_features_final_tinfo.name = padded_features_final_wsName;
+//        padded_features_final_tinfo.dims = padded_features_tinfo->dims;
+//        padded_features_final_tinfo.dims[0] = num_valid_points;
+//
+//        TensorInfo padded_perturb_normal_final_tinfo;
+//        padded_perturb_normal_final_tinfo.name = padded_perturb_normal_final_wsName;
+//        padded_perturb_normal_final_tinfo.dims = padded_perturb_normal_tinfo->dims;
+//        padded_perturb_normal_final_tinfo.dims[0] = num_valid_points;
+//
+//        std::string ws_msg = "";
+//        if (!ensureWorkspaceBuffer(ws_, padded_features_final_wsName, padded_features_final_tinfo, &ws_msg)) {
+//            LOGE("[Pipeline:] Could not allocate a buffer for %s !", padded_features_final_wsName.c_str());
+//            return;
+//        }
+//        if (!ensureWorkspaceBuffer(ws_, padded_perturb_normal_final_wsName, padded_perturb_normal_final_tinfo, &ws_msg)) {
+//            LOGE("[Pipeline:] Could not allocate a buffer for %s !", padded_perturb_normal_final_wsName.c_str());
+//            return;
+//        }
+//        auto* padded_features_final = static_cast<float*>(ws_.data(padded_features_final_wsName));
+//        auto* padded_perturb_normal_final = static_cast<float*>(ws_.data(padded_perturb_normal_final_wsName));
+//        size_t elements_per_row = 1;
+//        for (size_t i = 1; i < padded_features_tinfo->dims.size(); ++i) elements_per_row *= padded_features_tinfo->dims[i];
+        // run the decoder loop
+//        for (size_t k = 0; k < n; ++k) {
+//            LOGI("[Pipeline:] running padded_decoder loop, iteration %lu", k);
+//            execution_summary += runGraph(*gr_runners_.padded_decoder, false);
+//            // copy results into final tensors
+//            auto* dst_features = padded_features_final + k*padded_features_tinfo->numel();
+//            auto* dst_normals = padded_perturb_normal_final + k*padded_perturb_normal_tinfo->numel();
+//            size_t rows_to_copy = (k == n-1) ? (num_valid_points - (n-1)*dec_n) : dec_n;
+//            size_t bytes_to_copy = rows_to_copy * elements_per_row * padded_features_tinfo->elementBytes;
+//            std::memcpy(dst_features, padded_features, bytes_to_copy);
+//            std::memcpy(dst_normals, padded_perturb_normal, bytes_to_copy);
+//        }
+//    }
+    else {
+        LOGI("[Pipeline:] running query triplane on gb_pos to get tri_query...");
+        query_triplane_optimized(gb_pos, scene_codes, padded_tri_query_dec, num_valid_points,
+                             scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
+                             inf_config_.radius);
+        LOGI("[Pipeline:] single run of padded_decoder...");
+        execution_summary += runGraph(*gr_runners_.padded_decoder, reset_sessions);
+    }
+    // get the final features and perturb_normal
+    auto* final_padded_features = static_cast<float*>(ws_.data(padded_features_final_wsName));
+    auto* final_padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_final_wsName));
+
+//    const auto& final_pf_tinfo = ws_.tinfoOf(padded_features_final_wsName);
+//    const auto& final_ppn_tinfo = ws_.tinfoOf(padded_perturb_normal_final_wsName);
+//    {
+//        std::string  dim_log = "";
+//        for (const auto& d : final_pf_tinfo->dims) dim_log += std::to_string(d) + ", ";
+//        LOGW("padded features dims: %s", dim_log.c_str());
+//        dim_log = "";
+//        for (const auto& d : final_ppn_tinfo->dims) dim_log += std::to_string(d) + ", ";
+//        LOGW("padded normals dims: %s", dim_log.c_str());
+//    }
+
+
+//    LOGI("[Pipeline:] Running decoder...");
+//    execution_summary += runGraph(*gr_runners_.padded_decoder, reset_sessions);
+//    const auto padded_features_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_0");
+//    auto* padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
+
+//    const auto padded_perturb_normal_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_1");
+//    auto* padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
 
     // call image estimator and get roughness and metallic
     LOGI("[Pipeline:] Running image estimator...");
@@ -1605,8 +2040,8 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
             rast_result.data(),
             bake_mask.data(),
             inf_config_.bake_resolution,inf_config_.bake_resolution,
-            padded_features, // it's ok to put the padded version as we internally only take the valid size given bake_mask
-            padded_perturb_normal,
+            final_padded_features, // it's ok to put the padded version as we internally only take the valid size given bake_mask
+            final_padded_perturb_normal,
             roughness,
             metallic,
             "basecolor.jpg", "bump.jpg", false
@@ -1626,6 +2061,296 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     std::chrono::duration<double> export_elapsed = export_end - export_start;
     LOGW("GLB export runtime: %f s", export_elapsed.count());
     LOGI("[Pipeline:] Done exporting to glb. Success? %i", (int)export_success);
+}
+
+void Spar3DPipeline::test_chunkedDecoder(const std::string& glb_output_path) {
+
+    std::string execution_summary = "";
+    bool reset_sessions = true;
+
+    const auto scene_codes_wsName = gr_runners_.scene_codes2_3->last().outputBinding.at("output_0");
+    const auto& scene_codes_tinfo = ws_.tinfoOf(scene_codes_wsName);
+    auto* scene_codes = static_cast<float*>(ws_.data(scene_codes_wsName));
+
+    std::string scene_codes_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_scene_codes_dump.bin";
+    if (!readFileToBuffer(scene_codes_dump_path, scene_codes, scene_codes_tinfo->bytes())) {
+        LOGE("COULD NOT READ SCENE_CODES FROM FILE!");
+        return;
+    }
+
+    // create mesh with v_pos and t_pos_idx
+    std::vector<mtd2::Vec3> grid_vertices;
+    std::vector<int> indices;
+    // Load Vertices
+    // Python saved flat floats, we load into Vec3 (size 12 bytes)
+    if (!loadVectorFromAsset(mgr_, "grid_vertices.bin", grid_vertices)) {
+        LOGE("[Pipeline:] Unable to load grid_vertices!");
+    }
+    // Load Indices
+    // Python saved flat int32, we load into int
+    if (!loadVectorFromAsset(mgr_, "indices.bin", indices)) {
+        LOGE("[Pipeline:] Unable to load indices for Marching Tetrahedra Helper!");
+    }
+    if (grid_vertices.empty()) LOGE("[Pipeline] grid vertices empty!");
+    if (indices.empty()) LOGE("[Pipeline] indices empty!");
+    // Instantiate
+    auto mt_helper = std::make_unique<mtd2::MarchingTetrahedraHelper>(grid_vertices, indices);
+
+    // get sdf and deformation fields
+    const auto sdf_wsName = gr_runners_.triplanesToProtoMesh->last().outputBinding.at("output_0");
+    auto* sdf = static_cast<float*>(ws_.data(sdf_wsName));
+    const auto& sdf_tinfo = ws_.tinfoOf(sdf_wsName);
+    std::string sdf_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_sdf_dump.bin";
+    if (!readFileToBuffer(sdf_dump_path, sdf, sdf_tinfo->bytes())) {
+        LOGE("COULD NOT READ SDF FROM FILE!");
+        return;
+    }
+    const auto deformation_wsName = gr_runners_.triplanesToProtoMesh->last().outputBinding.at("output_1");
+    auto* deformation = static_cast<float*>(ws_.data(deformation_wsName));
+    const auto& deformation_tinfo = ws_.tinfoOf(deformation_wsName);
+    std::string deformation_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_deformation_dump.bin";
+    if (!readFileToBuffer(deformation_dump_path, deformation, deformation_tinfo->bytes())) {
+        LOGE("COULD NOT READ DEFORMATION FROM FILE!");
+        return;
+    }
+
+    // make mesh with v_pos already scaled
+    mtd2::Mesh mesh = mt_helper->forward(sdf, deformation, bbox_);
+    if (mesh.v_pos.empty()) LOGE("[Pipeline] mesh v_pos is empty!");
+    if (mesh.t_pos_idx.empty()) LOGE("[Pipeline] mesh v_pos is empty!");
+    std::string vpos_string = "v_pos: ";
+    std::string tposidx_string = "t_pos_idx: ";
+    for (size_t i = 0; i < 9; ++i) {
+        vpos_string += std::to_string(mesh.v_pos[i]) + ", ";
+        tposidx_string += std::to_string(mesh.t_pos_idx[i]) + ", ";
+    }
+    LOGW("%s", vpos_string.c_str());
+    LOGW("%s", tposidx_string.c_str());
+    bool nan_in_pos = false;
+    for (float v : mesh.v_pos) {
+        if (std::isnan(v)) {
+            nan_in_pos = true;
+            break;
+        }
+    }
+    if (nan_in_pos) LOGE("[Pipeline] Found NaN in v_pos!");
+
+    // mesh.unwrap_uv
+    LOGI("[Pipeline:] unwrapping uv...");
+    LOGW("INIT MESH V_POS size: %lu, T_POS_IDX size: %lu", mesh.v_pos.size()/3, mesh.t_pos_idx.size()/3);
+    std::vector<int> indices_int(mesh.t_pos_idx.begin(), mesh.t_pos_idx.end());
+    MeshCPP mesh_cpp(mesh.v_pos, indices_int);
+    LOGW("[1] MESH_CPP V_POS size: %lu, T_POS_IDX size: %lu", mesh_cpp.v_pos().size()/3, mesh_cpp.t_pos_idx().size()/3);
+    mesh_cpp.unwrap_uv();
+    LOGW("[2] MESH_CPP V_POS size: %lu, T_POS_IDX size: %lu", mesh_cpp.v_pos().size()/3, mesh_cpp.t_pos_idx().size()/3);
+
+    // rasterize, get mask, interpolate, gb_pos
+    const int N = mesh_cpp.t_pos_idx().size() / 3; // t_pos_idx is Nx3 (flattened)
+    std::vector<ssize_t> shape = { inf_config_.bake_resolution, inf_config_.bake_resolution, 4 };
+    size_t  num_pixels = shape[0]*shape[1];
+    std::vector<float> rast_result(num_pixels*shape[2], 0.0f);
+
+    LOGI("[Pipeline:] Rasterizing...");
+    auto rast_start = std::chrono::high_resolution_clock::now();
+    texture_baker_cpp::rasterize_cpu_host_triangleTile(rast_result.data(),
+                                                       reinterpret_cast<const texture_baker_cpp::tb_float2*>(mesh_cpp.v_tex().data()),
+                                                       reinterpret_cast<const texture_baker_cpp::tb_int3*>(mesh_cpp.t_pos_idx().data()),
+                                                        N,
+                                                        inf_config_.bake_resolution);
+    auto rast_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> rast_elapsed = rast_end - rast_start;
+    LOGW("Rasterization runtime: %f s", rast_elapsed.count());
+
+    LOGI("[Pipeline:] Getting bake mask...");
+    std::vector<uint8_t> bake_mask = get_mask(rast_result, inf_config_.bake_resolution);
+
+    LOGI("[Pipeline:] Interpolating...");
+    std::vector<float> pos_bake(num_pixels*3, 0.0f); // 1024x1024x3
+    texture_baker_cpp::interpolate_cpu_host(pos_bake.data(),
+                                            mesh_cpp.v_pos().data(),
+                                            mesh_cpp.t_pos_idx().data(),
+                                            N,
+                                            rast_result.data(),
+                                            inf_config_.bake_resolution,
+                                            inf_config_.bake_resolution);
+
+    // construct gb_pos = pos_bake[bake_mask]
+    LOGI("[Pipeline:] constructing gb_pos...");
+    const std::string gb_pos_wsName = "gb_pos";
+//    TensorInfo gb_pos_tinfo;
+//    gb_pos_tinfo.name = gb_pos_wsName;
+//    gb_pos_tinfo.dims = {};
+    LOGI("[Pipeline:] calling compact_masked_parallel...");
+    LOGW("RSS: %zu KB", readProcessRssKb());
+    int num_valid_points = compact_masked_parallel(&gb_pos_wsName, pos_bake.data(), bake_mask.data(), num_pixels, &ws_);
+    auto* gb_pos = static_cast<float*>(ws_.data(gb_pos_wsName));
+    if (!gb_pos) {
+        LOGE("gb_pos was not found in workspace!");
+        return;
+    }
+
+    const auto& gb_pos_tinfo = ws_.tinfoOf(gb_pos_wsName);
+    std::string gb_pos_log = "gb_pos dims: ";
+    for (const auto& d : gb_pos_tinfo->dims) gb_pos_log += std::to_string(d)+" ";
+    LOGW("[Pipeline:] %s", gb_pos_log.c_str());
+    logNumbers(gb_pos, *gb_pos_tinfo, gb_pos_wsName, 12, 'w');
+    // tri_query = spar3d_model.query_triplane(gb_pos, triplane)[0]
+    // Decoder was exported with a static input of dimension 300'000
+    // in some cases however, we exceed that dimension and need to account for this.
+    // Fortunately, the decoder operations are row-wise separable,
+    // so we can simply call the decoder on chunks of 300'000 then concatenate.
+    // We first need to query triplane on chunks of gb_pos and put the outputs into
+    // the padded_tri_query_dec tensor whose number of rows = 300'000, call the decoder on this
+    // and repeat.
+//    LOGI("[Pipeline:] running query triplane on gb_pos to get tri_query...");
+    LOGI("[Pipeline:] Onto query triplane and decoding...");
+    const auto padded_tri_query_dec_wsName = gr_runners_.padded_decoder->last().inputBinding.at("padded_tri_query");
+    auto* padded_tri_query_dec = static_cast<float*>(ws_.data(padded_tri_query_dec_wsName));
+    const auto& padded_tri_query_dec_tinfo = ws_.tinfoOf(padded_tri_query_dec_wsName);
+
+    const auto padded_features_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_0");
+    const auto padded_perturb_normal_wsName = gr_runners_.padded_decoder->last().outputBinding.at("output_1");
+    const auto& padded_features_tinfo = ws_.tinfoOf(padded_features_wsName);
+    const auto& padded_perturb_normal_tinfo = ws_.tinfoOf(padded_perturb_normal_wsName);
+    auto* padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
+    auto* padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
+    std::string padded_features_final_wsName = padded_features_wsName; //"padded_features_final";
+    std::string padded_perturb_normal_final_wsName = padded_perturb_normal_wsName; //"padded_perturb_normal_final";
+
+    if (num_valid_points > padded_tri_query_dec_tinfo->dims[0]) {
+        const auto dec_n = padded_tri_query_dec_tinfo->dims[0];
+        LOGW("[Pipeline:] Number of valid points exceeds expected (%lu). Splitting operations for the triplane_query.", dec_n);
+//        size_t n = static_cast<size_t>(std::ceil(num_valid_points / dec_n)); // this won't work as it's doing integer division, so ceil won't work as intended
+        size_t n = (num_valid_points + dec_n - 1) / dec_n;
+        LOGI("n = %lu", n);
+
+        size_t gb_pos_elements_per_row = 1;
+        for (size_t i = 1; i < gb_pos_tinfo->dims.size(); ++i) gb_pos_elements_per_row *= gb_pos_tinfo->dims[i];
+
+        // prepare things for the decoder ------------------
+        padded_features_final_wsName = "padded_features_final";
+        padded_perturb_normal_final_wsName = "padded_perturb_normal_final";
+
+        TensorInfo padded_features_final_tinfo;
+        padded_features_final_tinfo.name = padded_features_final_wsName;
+        padded_features_final_tinfo.dims = padded_features_tinfo->dims;
+        padded_features_final_tinfo.dims[0] = num_valid_points;
+
+        TensorInfo padded_perturb_normal_final_tinfo;
+        padded_perturb_normal_final_tinfo.name = padded_perturb_normal_final_wsName;
+        padded_perturb_normal_final_tinfo.dims = padded_perturb_normal_tinfo->dims;
+        padded_perturb_normal_final_tinfo.dims[0] = num_valid_points;
+
+        std::string ws_msg = "";
+        if (!ensureWorkspaceBuffer(ws_, padded_features_final_wsName, padded_features_final_tinfo, &ws_msg)) {
+            LOGE("[Pipeline:] Could not allocate a buffer for %s !", padded_features_final_wsName.c_str());
+            return;
+        }
+        if (!ensureWorkspaceBuffer(ws_, padded_perturb_normal_final_wsName, padded_perturb_normal_final_tinfo, &ws_msg)) {
+            LOGE("[Pipeline:] Could not allocate a buffer for %s !", padded_perturb_normal_final_wsName.c_str());
+            return;
+        }
+        auto* padded_features_final = static_cast<float*>(ws_.data(padded_features_final_wsName));
+        auto* padded_perturb_normal_final = static_cast<float*>(ws_.data(padded_perturb_normal_final_wsName));
+        size_t elements_per_row = 1;
+        for (size_t i = 1; i < padded_features_tinfo->dims.size(); ++i) elements_per_row *= padded_features_tinfo->dims[i];
+
+        // After ensureWorkspaceBuffer:
+        gb_pos = static_cast<float*>(ws_.data(gb_pos_wsName));
+        padded_tri_query_dec = static_cast<float*>(ws_.data(padded_tri_query_dec_wsName));
+        padded_features = static_cast<float*>(ws_.data(padded_features_wsName));
+        padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_wsName));
+        // --------------------------------------------
+        // call query_triplane then decoder on chunks
+        for (size_t k = 0; k < n; ++k) {
+//            if (k < n-1) continue;
+            size_t actual_n = (k == n-1) ? (num_valid_points - (n-1)*dec_n) : dec_n;
+
+            // query triplane:
+            // zero-copy slice: offset the pointer to the start of the chunk, and pass the number of rows later
+            LOGI("taking %lu from gb_pos:", k * dec_n * gb_pos_elements_per_row);
+            float* gb_pos_chunk = gb_pos + (k * dec_n * gb_pos_elements_per_row);
+            LOGI("[Pipeline:] running query_triplane_optimized loop, iteration %lu", k);
+            query_triplane_optimized(gb_pos_chunk, scene_codes, padded_tri_query_dec, actual_n, //dec_n,
+                             scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
+                             inf_config_.radius);
+
+            // call decoder
+            LOGI("[Pipeline:] running padded_decoder loop, iteration %lu", k);
+            execution_summary += runGraph(*gr_runners_.padded_decoder, false);
+            std::memset(padded_tri_query_dec, 0, padded_tri_query_dec_tinfo->bytes()); // reset to 0
+            // copy results into final tensors
+            auto* dst_features = padded_features_final + k*padded_features_tinfo->numel();
+            auto* dst_normals = padded_perturb_normal_final + k*padded_perturb_normal_tinfo->numel();
+            size_t bytes_to_copy = actual_n * elements_per_row * padded_features_tinfo->elementBytes;
+            LOGW("number copied: %lu", actual_n*elements_per_row);
+            std::memcpy(dst_features, padded_features, bytes_to_copy);
+            std::memcpy(dst_normals, padded_perturb_normal, bytes_to_copy);
+            // reset features and normals
+//            std::memset(padded_features, 0, padded_features_tinfo->bytes());
+//            std::memset(padded_perturb_normal, 0, padded_perturb_normal_tinfo->bytes());
+//            break; // TODO remove
+        }
+    } else {
+        LOGI("[Pipeline:] running query triplane on gb_pos to get tri_query...");
+        query_triplane_optimized(gb_pos, scene_codes, padded_tri_query_dec, num_valid_points,
+                             scene_codes_tinfo->dims[2], scene_codes_tinfo->dims[3], scene_codes_tinfo->dims[4],
+                             inf_config_.radius);
+        LOGI("[Pipeline:] single run of padded_decoder...");
+        execution_summary += runGraph(*gr_runners_.padded_decoder, reset_sessions);
+    }
+    // get the final features and perturb_normal
+    auto* final_padded_features = static_cast<float*>(ws_.data(padded_features_final_wsName));
+    auto* final_padded_perturb_normal = static_cast<float*>(ws_.data(padded_perturb_normal_final_wsName));
+
+    const auto& final_pf_tinfo = ws_.tinfoOf(padded_features_final_wsName);
+    const auto& final_ppn_tinfo = ws_.tinfoOf(padded_perturb_normal_final_wsName);
+    {
+        std::string  dim_log = "";
+        for (const auto& d : final_pf_tinfo->dims) dim_log += std::to_string(d) + ", ";
+        LOGW("padded features dims: %s", dim_log.c_str());
+        dim_log = "";
+        for (const auto& d : final_ppn_tinfo->dims) dim_log += std::to_string(d) + ", ";
+        LOGW("padded normals dims: %s", dim_log.c_str());
+    }
+
+    float roughness = 0.461987f;
+    float metallic = 0.0f;
+
+    // call texture builder
+    LOGI("[Pipeline:] Building textures...");
+    auto texture_start = std::chrono::high_resolution_clock::now();
+    texture_baker_cpp::BuildTexturesInspect inspect = texture_baker_cpp::BuildTextures_SaveImages(
+            mesh_cpp.v_nrm().data(), mesh_cpp.v_nrm().size(),
+            mesh_cpp.v_tng().data(), mesh_cpp.v_tng().size(),
+            mesh_cpp.v_pos().data(), mesh_cpp.v_pos().size(),
+            mesh_cpp.v_tex().data(), mesh_cpp.v_tex().size(),
+            mesh_cpp.t_pos_idx().data(), mesh_cpp.t_pos_idx().size(),
+            rast_result.data(),
+            bake_mask.data(),
+            inf_config_.bake_resolution,inf_config_.bake_resolution,
+            final_padded_features, // it's ok to put the padded version as we internally only take the valid size given bake_mask
+            final_padded_perturb_normal,
+            roughness,
+            metallic,
+            "basecolor.jpg", "bump.jpg", false
+            );
+    auto texture_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> texture_elapsed = texture_end - texture_start;
+    LOGW("Texture building runtime: %f s", texture_elapsed.count());
+    LOGW("RSS: %zu KB", readProcessRssKb());
+
+    // call glb exporter
+    LOGI("[Pipeline:] Exporting to glb...");
+    auto export_start = std::chrono::high_resolution_clock::now();
+
+    bool export_success = texture_baker_cpp::ExportGLBFromInspect(inspect, mesh_cpp, glb_output_path);
+
+    auto export_end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> export_elapsed = export_end - export_start;
+    LOGW("GLB export runtime: %f s", export_elapsed.count());
+    LOGI("[Pipeline:] Done exporting to glb. Success? %i", (int)export_success);
+
 }
 
 //void Spar3DPipeline::overall_pipelineOld(uint8_t* img, int ori_width, int ori_height,

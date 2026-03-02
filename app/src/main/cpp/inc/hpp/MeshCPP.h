@@ -34,6 +34,22 @@ public:
     // Constructor: supply flattened v_pos (Nv*3) and flattened t_pos_idx (Nf*3)
     MeshCPP(const std::vector<float>& v_pos_flat, const std::vector<int>& t_pos_idx_flat);
 
+    MeshCPP(const std::vector<float>& v_pos_flat,
+            const std::vector<int>& t_pos_idx_flat,
+            const std::vector<float>& v_nrm,
+            const std::vector<float>& v_tng,
+            const std::vector<float>& v_tex)
+            : v_pos_(v_pos_flat),
+            t_pos_idx_(t_pos_idx_flat),
+            v_nrm_(v_nrm),
+            v_tng_(v_tng),
+            v_tex_(v_tex)
+            {
+                has_v_nrm_ = true;
+                has_v_tex_ = true;
+                has_v_tng_ = true;
+            }
+
     // Accessors
     const std::vector<float>& v_pos() const { return v_pos_; }          // flattened Nx3
     const std::vector<int>& t_pos_idx() const { return t_pos_idx_; }    // flattened Mx3
@@ -41,6 +57,12 @@ public:
     const std::vector<float>& v_tng();  // compute lazily
     const std::vector<float>& v_tex();  // after unwrap_uv, per-vertex uv flattened Nx2
     const std::vector<int>& edges();    // flattened Ne x 2
+
+    void set_v_pos(std::vector<float> vpos) { v_pos_ = vpos; }
+    void set_v_norm(std::vector<float> vnrm) { v_nrm_ = vnrm; has_v_nrm_ = true; }
+    void set_v_tng(std::vector<float> vtng) { v_tng_ = vtng; has_v_tng_ = true; }
+    void set_v_tex(std::vector<float> vtex) { v_tex_ = vtex; has_v_tex_ = true; }
+    void set_t_pos_idx(std::vector<int> tposidx) { t_pos_idx_ = tposidx; }
 
     std::optional<std::reference_wrapper<const std::vector<float>>> get_v_nrm() const {
 //        static const std::vector<float> empty;

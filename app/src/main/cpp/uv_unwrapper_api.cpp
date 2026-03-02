@@ -24,6 +24,15 @@ using std::size_t;
 #include "unwrapper_decl.h"
 using namespace UVUnwrapper;
 
+#include <android/log.h>
+#ifdef LOG_TAG
+#undef LOG_TAG
+#endif
+#define LOG_TAG "UVUnwrapperAPI"
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN,  LOG_TAG, __VA_ARGS__)
+
 /**
  * Helper wrappers: create_bvhs(...) and perform_intersection_check(...) are defined
  * in the original unwrapper.cpp (you provided). Make sure those functions are declared
@@ -311,6 +320,7 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
         triangles.resize(num_faces);
     } catch (const std::bad_alloc&) {
         std::cerr << "COULD NOT RESIZE TRIANGLES!\n";
+        LOGE("COULD NOT RESIZE TRIANGLES!");
         std::free(assign_indices);
         *out_assign_indices = nullptr;
         return UV_OUT_OF_MEMORY;
@@ -321,6 +331,7 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
         vertex_tri_centroids.resize(num_faces);
     } catch (const std::bad_alloc&) {
         std::cerr << "COULD NOT RESIZE CENTROIDS!\n";
+        LOGE("COULD NOT RESIZE CENTROIDS!");
         std::free(assign_indices);
         *out_assign_indices = nullptr;
         return UV_OUT_OF_MEMORY;
@@ -333,6 +344,7 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
 
     // quick defensive scan BEFORE heavy work:
     std::cerr << "CHECKING INDICES...\n";
+    LOGI("[uv_unwrapper_api:] CHECKING INDICES...");
     {
         const size_t Nv = num_vertices;
         bool bad = false;
@@ -349,12 +361,15 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
         if (bad) {
             std::fprintf(stderr, "assign_faces_uv_to_atlas_index_raw: BAD INDEX: face %lld has idx %lld (num_vertices=%zu,num_faces=%zu)\n",
                          (long long)bad_face, (long long)bad_idx_val, Nv, num_faces);
+            LOGE("[uv_unwrapper_api:] assign_faces_uv_to_atlas_index_raw: BAD INDEX: face %lld has idx %lld (num_vertices=%zu,num_faces=%zu)",
+                 (long long)bad_face, (long long)bad_idx_val, Nv, num_faces);
             // Return an error status so Python sees this instead of hanging/crashing deeper.
             *out_assign_indices = nullptr;
             return UV_BAD_ARG;
         }
     }
     std::cerr << "CHECKING INDICES OK!\n";
+    LOGI("[uv_unwrapper_api:] CHECKING INDICES OK!");
 
 
     // Configure OpenMP threads if available and requested
@@ -368,6 +383,7 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
     // and insert triangle index into triangle_per_face face bucket.
     auto t_start = std::chrono::high_resolution_clock::now();
     std::cerr << "[UV unwrap] entering for loop\n";
+    LOGI("[uv_unwrapper_api:] entering for loop");
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif
@@ -428,6 +444,7 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
     auto t_after_first_pass = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> sec1 = t_after_first_pass - t_start;
     std::cout << "first pass time: " << sec1.count() << "s\n";
+    LOGI("[uv_unwrapper_api:] first pass time: %f s",sec1.count());
 
     // Build first BVH set (0..5) and run intersection check
     UVUnwrapper::BVH* bvhs = nullptr;
@@ -442,11 +459,14 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
     // create_bvhs signature in your codebase may vary slightly; call accordingly.
     // We cast num_faces to int because original signature used int in some places.
     std::cerr << "Creating bvhs 0-6...\n";
+    LOGI("Creating bvhs 0-6...");
     create_bvhs(bvhs, triangles.data(), triangle_per_face, static_cast<int>(num_faces), 0, 6);
     std::cerr << "Done with bvhs, performing intersection checks...\n";
+    LOGI("Done with bvhs, performing intersection checks...");
     auto t_after_bvh = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> sec2 = t_after_bvh - t_after_first_pass;
     std::cout << "create_bvhs time: " << sec2.count() << "s\n";
+    LOGI("create_bvhs time: %f s", sec2.count());
     // perform_intersection_check will modify assign_indices in-place
     perform_intersection_check(
         bvhs,
@@ -459,9 +479,11 @@ UVUnwrapperStatus assign_faces_uv_to_atlas_index_raw(
         triangle_per_face
     );
     std::cerr << "Done with intersection checks\n";
+    LOGI("Done with intersection checks");
     auto t_after_inter1 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> sec3 = t_after_inter1 - t_after_bvh;
     std::cout << "intersect1 time: " << sec3.count() << "s\n";
+    LOGI("intersect1 time: %f s", sec3.count());
 
     // Second BVH set (6..11)
     UVUnwrapper::BVH* new_bvhs = nullptr;

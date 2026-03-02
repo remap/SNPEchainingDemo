@@ -54,7 +54,21 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+// for mediapipe segmenter
+import com.google.mediapipe.framework.image.BitmapImageBuilder
+import com.google.mediapipe.tasks.core.BaseOptions
+import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter
+import com.google.mediapipe.tasks.vision.imagesegmenter.ImageSegmenter.ImageSegmenterOptions
+import android.graphics.Color
+import com.google.mediapipe.tasks.vision.core.RunningMode
+import com.google.mediapipe.framework.image.ByteBufferExtractor
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
+// for onnx
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession.SessionOptions
 
 class MainActivity : AppCompatActivity() {
 
@@ -283,7 +297,7 @@ class MainActivity : AppCompatActivity() {
         checkAndDownloadModel()
 
         // This will lock the UI, check hashes, download if needed, and THEN enable buttons.
-        startStrictModelSync()
+//        startStrictModelSync()
 
         btn_runTokenizers.setOnClickListener {
             android.util.Log.i("Tokenizer", "Running tokenizers...")
@@ -757,6 +771,8 @@ class MainActivity : AppCompatActivity() {
 
                 // C. Run ML Kit Background Removal
                 removeBackgroundMLKit(rgbaBitmap)
+//                removeBackgroundMediaPipe(rgbaBitmap)
+//                removeBackgroundONNX(rgbaBitmap)
 
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -877,6 +893,7 @@ class MainActivity : AppCompatActivity() {
                     val height = foregroundBitmap.height
                     val byteBuffer = ByteBuffer.allocateDirect(foregroundBitmap.byteCount)
                     foregroundBitmap.copyPixelsToBuffer(byteBuffer) // Copies ARGB_8888 bytes
+//                    imageView.setImageBitmap(foregroundBitmap)
 //                    val savePath = this.filesDir.absolutePath
                     val externalDir = this.getExternalFilesDir(null)
                     val baseDir = externalDir ?: this.filesDir
@@ -969,6 +986,313 @@ class MainActivity : AppCompatActivity() {
             }
     }
 
+    private fun removeBackgroundMediaPipe(inputBitmap: Bitmap) {
+    // 1. Initial UI setup
+    progress.visibility = View.VISIBLE
+    txtLog.text = "Initializing MediaPipe Segmenter..."
 
+    // Launch everything on a background thread so we don't freeze the UI
+    lifecycleScope.launch(Dispatchers.Default) {
+        try {
+            // ==========================================
+            // PART A: MEDIAPIPE SEGMENTATION
+            // ==========================================
+            txtLog.text = "0"
+            // 1. Setup options (Ensure "deeplabv3.tflite" is in your src/main/assets/ folder)
+            val baseOptions = BaseOptions.builder()
+                .setModelAssetPath("deeplab_v3.tflite")
+                .build()
+            txtLog.text = "1"
+
+            val options = ImageSegmenter.ImageSegmenterOptions.builder()
+                .setBaseOptions(baseOptions)
+                .setRunningMode(RunningMode.IMAGE)
+                .setOutputCategoryMask(true)
+                .setOutputConfidenceMasks(false)
+                .build()
+            txtLog.text = "2"
+
+            // 2. Create Segmenter
+            val segmenter = ImageSegmenter.createFromOptions(this@MainActivity, options)
+            txtLog.text = "3"
+
+            withContext(Dispatchers.Main) { txtLog.text = "Segmenting Image..." }
+
+            // 3. Process the image (Blocking call)
+            val mpImage = BitmapImageBuilder(inputBitmap).build()
+            val result = segmenter.segment(mpImage)
+
+            val masks = result.categoryMask()
+            if (!masks.isPresent) {
+                throw Exception("No mask returned from MediaPipe.")
+            }
+
+            // 4. Extract the mask bytes
+            val maskImage = masks.get()
+            val maskBuffer = ByteBufferExtractor.extract(maskImage)
+            maskBuffer.rewind()
+
+            val width = inputBitmap.width
+            val height = inputBitmap.height
+
+            // Get original pixels
+            val inputPixels = IntArray(width * height)
+            inputBitmap.getPixels(inputPixels, 0, width, 0, 0, width, height)
+
+            // Prepare output pixels
+            val outputPixels = IntArray(width * height)
+
+            // Apply mask: if category is 0, it's background. If > 0, it's an object.
+            for (i in 0 until width * height) {
+                val category = maskBuffer.get().toInt() and 0xFF
+                if (category > 0) { // Keep Foreground
+                    outputPixels[i] = inputPixels[i]
+                } else {            // Erase Background
+                    outputPixels[i] = Color.TRANSPARENT
+                }
+            }
+
+            // 5. Create the transparent foreground bitmap
+            val foregroundBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            foregroundBitmap.setPixels(outputPixels, 0, width, 0, 0, width, height)
+
+            // Free MediaPipe memory
+            segmenter.close()
+
+            withContext(Dispatchers.Main) { txtLog.text = "Preprocessing for 3D..." }
+
+            // ==========================================
+            // PART B: C++ JNI PIPELINE (Your existing code)
+            // ==========================================
+
+            val byteBuffer = ByteBuffer.allocateDirect(foregroundBitmap.byteCount)
+            foregroundBitmap.copyPixelsToBuffer(byteBuffer) // Copies ARGB_8888 bytes
+
+            val externalDir = getExternalFilesDir(null)
+            val baseDir = externalDir ?: filesDir
+            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val tempFile = File(baseDir, "model_$timeStamp.glb")
+            val savePath = tempFile.absolutePath
+
+            android.util.Log.i("savePath: ", savePath)
+
+            // Define the callback
+            val callback = object : SNPEHelper.PreprocessCallback {
+                override fun onPreprocessComplete(data: FloatArray) {
+                    // Switch to Main to update UI immediately
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        val previewBitmap = floatArrayToBitmapRGBA(data, 512, 512)
+                        imageView.setImageBitmap(previewBitmap)
+                        txtLog.text = "Preprocessing done. Running Inference..."
+                    }
+                }
+            }
+
+            // BLOCKING C++ CALL
+            val finalFloats = SNPEHelper.runSPAR3D(
+                assets,
+                byteBuffer,
+                width,
+                height,
+                savePath,
+                callback
+            )
+
+            // Move the file and open it
+            if (tempFile.exists()) {
+                val savedUri = moveGlbToDownloads(this@MainActivity, tempFile)
+                if (savedUri != null) {
+                    android.util.Log.i("Export", "GLB moved to Documents: $savedUri")
+                    withContext(Dispatchers.Main) {
+                        openGlbExternally(this@MainActivity, savedUri)
+                    }
+                } else {
+                    android.util.Log.w("Export", "Failed to move GLB to Documents")
+                }
+            }
+
+            // Final Result Handling
+            withContext(Dispatchers.Main) {
+                progress.visibility = View.GONE
+                txtLog.text = "Inference Complete!"
+            }
+
+        } catch (e: Exception) {
+            e.printStackTrace()
+            withContext(Dispatchers.Main) {
+                progress.visibility = View.GONE
+                txtLog.text = "Error: ${e.message}"
+            }
+        }
+    }
+}
+
+    private fun getAssetFilePath(assetName: String): String {
+        val file = File(cacheDir, assetName)
+        // Only copy it if it doesn't already exist
+        if (!file.exists()) {
+            assets.open(assetName).use { inputStream ->
+                FileOutputStream(file).use { outputStream ->
+                    inputStream.copyTo(outputStream)
+                }
+            }
+        }
+        return file.absolutePath
+    }
+    private fun removeBackgroundONNX(inputBitmap: Bitmap) {
+        progress.visibility = View.VISIBLE
+        txtLog.text = "Initializing ONNX Engine..."
+
+        lifecycleScope.launch(Dispatchers.Default) {
+            var env: OrtEnvironment? = null
+            try {
+                // ==========================================
+                // PART A: ONNX INFERENCE (RMBG / U^2-Net)
+                // ==========================================
+                env = OrtEnvironment.getEnvironment()
+
+                // 1. Load the model from assets
+//                val session = env.createSession(assets.open("model.onnx").readBytes())
+                val modelPath = getAssetFilePath("model.onnx")
+
+                val options = SessionOptions()
+                options.addNnapi() // Tells ONNX to use Android's hardware accelerator
+
+//                val session = env.createSession(modelPath)
+                val session = env.createSession(modelPath, options)
+
+                val inputName = session.inputNames.iterator().next() // usually "input" or "image"
+
+                // 2. Prepare Image (Most high-quality matting models expect 1024x1024)
+                val targetSize = 1024
+                val resizedBitmap = Bitmap.createScaledBitmap(inputBitmap, targetSize, targetSize, true)
+
+                withContext(Dispatchers.Main) { txtLog.text = "Extracting Alpha Mask..." }
+
+                // 3. Convert Bitmap to CHW FloatBuffer (Normalized to -0.5 to 0.5)
+                val imgData = FloatBuffer.allocate(3 * targetSize * targetSize)
+                val pixels = IntArray(targetSize * targetSize)
+                resizedBitmap.getPixels(pixels, 0, targetSize, 0, 0, targetSize, targetSize)
+
+                val rOffset = 0
+                val gOffset = targetSize * targetSize
+                val bOffset = 2 * targetSize * targetSize
+
+                // Unroll channels into flat array for the tensor
+                for (i in pixels.indices) {
+                    val color = pixels[i]
+                    // Bria RMBG standard normalization: (pixel / 255.0) - 0.5
+                    imgData.put(rOffset + i, (Color.red(color) / 255.0f) - 0.5f)
+                    imgData.put(gOffset + i, (Color.green(color) / 255.0f) - 0.5f)
+                    imgData.put(bOffset + i, (Color.blue(color) / 255.0f) - 0.5f)
+                }
+                imgData.rewind() // Reset buffer position before reading!
+
+                // 4. Run Inference
+                val shape = longArrayOf(1, 3, targetSize.toLong(), targetSize.toLong())
+                val inputTensor = OnnxTensor.createTensor(env, imgData, shape)
+                withContext(Dispatchers.Main) { txtLog.text = "Running session..." }
+                val result = session.run(mapOf(inputName to inputTensor))
+
+                withContext(Dispatchers.Main) { txtLog.text = "Processing results..." }
+                // 5. Get the Output Alpha Mask [1, 1, 1024, 1024]
+                val outputTensor = result[0] as OnnxTensor
+                val alphaBuffer = outputTensor.floatBuffer
+
+                // 6. Merge RGB + Alpha into a final Transparent RGBA Bitmap
+                val finalPixels = IntArray(targetSize * targetSize)
+                for (i in pixels.indices) {
+                    val originalColor = pixels[i]
+
+                    // Read alpha value from model. Usually 0.0 to 1.0.
+                    var alphaFloat = alphaBuffer.get(i)
+
+                    // If the model exports raw logits instead of sigmoids, apply sigmoid:
+                    // alphaFloat = (1.0f / (1.0f + kotlin.math.exp(-alphaFloat)))
+
+                    // Clamp just to be safe
+                    if (alphaFloat < 0f) alphaFloat = 0f
+                    if (alphaFloat > 1f) alphaFloat = 1f
+
+                    val alphaInt = (alphaFloat * 255).toInt()
+
+                    // Compose ARGB_8888
+                    finalPixels[i] = Color.argb(
+                        alphaInt,
+                        Color.red(originalColor),
+                        Color.green(originalColor),
+                        Color.blue(originalColor)
+                    )
+                }
+
+                val foregroundBitmap = Bitmap.createBitmap(targetSize, targetSize, Bitmap.Config.ARGB_8888)
+                foregroundBitmap.setPixels(finalPixels, 0, targetSize, 0, 0, targetSize, targetSize)
+
+                // Cleanup ONNX Memory
+                inputTensor.close()
+                result.close()
+                session.close()
+
+                withContext(Dispatchers.Main) { txtLog.text = "Preprocessing for 3D..." }
+
+                // ==========================================
+                // PART B: C++ JNI PIPELINE
+                // ==========================================
+
+                // Extract the perfect RGBA bytes
+                val byteBuffer = ByteBuffer.allocateDirect(foregroundBitmap.byteCount)
+                foregroundBitmap.copyPixelsToBuffer(byteBuffer)
+
+                val externalDir = getExternalFilesDir(null)
+                val baseDir = externalDir ?: filesDir
+                val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                val tempFile = File(baseDir, "model_$timeStamp.glb")
+                val savePath = tempFile.absolutePath
+
+                // Callback for halfway UI update
+                val callback = object : SNPEHelper.PreprocessCallback {
+                    override fun onPreprocessComplete(data: FloatArray) {
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            val previewBitmap = floatArrayToBitmapRGBA(data, 512, 512)
+                            imageView.setImageBitmap(previewBitmap)
+                            txtLog.text = "Preprocessing done. Running Inference..."
+                        }
+                    }
+                }
+
+                // Blocking JNI Call (Feeding it our gorgeous 1024x1024 transparent image)
+                val finalFloats = SNPEHelper.runSPAR3D(
+                    assets,
+                    byteBuffer,
+                    targetSize, // 1024
+                    targetSize, // 1024
+                    savePath,
+                    callback
+                )
+
+                // Move the file and open it
+                if (tempFile.exists()) {
+                    val savedUri = moveGlbToDownloads(this@MainActivity, tempFile)
+                    if (savedUri != null) {
+                        withContext(Dispatchers.Main) { openGlbExternally(this@MainActivity, savedUri) }
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    progress.visibility = View.GONE
+                    txtLog.text = "Inference Complete!"
+                }
+
+            } catch (e: Exception) {
+                e.printStackTrace()
+                withContext(Dispatchers.Main) {
+                    progress.visibility = View.GONE
+                    txtLog.text = "ONNX Error: ${e.message}"
+                }
+            } finally {
+                env?.close() // Prevent memory leaks
+            }
+        }
+    }
 
 }

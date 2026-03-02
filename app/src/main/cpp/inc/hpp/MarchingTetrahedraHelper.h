@@ -189,7 +189,8 @@ public:
 
         if (edge_keys.empty()) {
             // nothing intersected, return empty mesh
-            LOGW("[MarchingTets] Nothing intersected, returning empty mesh!");
+//            LOGW("[MarchingTets] Nothing intersected, returning empty mesh!");
+            std::cerr << "[MarchingTets] Nothing intersected, returning empty mesh!\n";
             return Mesh();
         }
 
@@ -226,7 +227,7 @@ public:
         // input scale is (0,1) so neglected here
         mtd2::Vec3 v_pos_scaling((tgt_max.x - tgt_min.x)*(1.0f/inp_scale),
                                  (tgt_max.y - tgt_min.y)*(1.0f/inp_scale),
-                                 (tgt_max.y - tgt_min.z)*(1.0f/inp_scale)
+                                 (tgt_max.z - tgt_min.z)*(1.0f/inp_scale)
                                  );
 
         // Iterate unique edges; can parallelize: each edge's interpolation is independent.
@@ -278,53 +279,96 @@ public:
 
         // --- THIRD PASS: assemble triangles using valid_tet_indices and the TRI_TABLE ---
         // Reserve triangle space heuristically
-        mesh.t_pos_idx.reserve(valid_tet_indices.size() * 2 * 3);
+//        mesh.t_pos_idx.reserve(valid_tet_indices.size() * 2 * 3);
+//
+//        for (size_t vi = 0; vi < valid_tet_indices.size(); ++vi) {
+//            uint32_t t = valid_tet_indices[vi];
+//            uint8_t case_idx = valid_tet_case[vi];
+//
+//            const int* trirow = TRI_TABLE[case_idx];
+//
+//            // For each triangle in row (up to 2 triangles, 3 entries each)
+//            for (int tri_e = 0; tri_e < 6; tri_e += 3) {
+//                if (trirow[tri_e] == -1) break;
+//
+//                uint32_t tri_vids[3];
+//                bool tri_valid = true;
+//
+//                for (int k = 0; k < 3; ++k) {
+//                    int edge_local = trirow[tri_e + k];
+//                    uint32_t a_local = EDGE_TO_LOCAL_VERTS[edge_local][0];
+//                    uint32_t b_local = EDGE_TO_LOCAL_VERTS[edge_local][1];
+//
+//                    // global vertex indices for the tet
+//                    uint32_t a_global = static_cast<uint32_t>( indices_[t*4 + a_local] );
+//                    uint32_t b_global = static_cast<uint32_t>( indices_[t*4 + b_local] );
+//
+//                    uint64_t ekey = pack_edge_key(a_global, b_global);
+//
+//                    auto it = edgekey_to_idx.find(ekey);
+//                    if (it == edgekey_to_idx.end()) {
+//                        tri_valid = false;
+//                        break;
+//                    }
+//                    uint32_t edge_idx = it->second;
+//                    uint32_t vid = edge_vertex_id[edge_idx];
+//                    if (vid == std::numeric_limits<uint32_t>::max()) {
+//                        // edge did not cross surface (shouldn't happen if tri table consistent), skip triangle
+//                        tri_valid = false;
+//                        break;
+//                    }
+//                    tri_vids[k] = vid;
+//                }
+//
+//                if (tri_valid) {
+//                    // Append triangle indices (winding as per table)
+//                    mesh.t_pos_idx.push_back(tri_vids[0]);
+//                    mesh.t_pos_idx.push_back(tri_vids[1]);
+//                    mesh.t_pos_idx.push_back(tri_vids[2]);
+//                }
+//            }
+//        }
 
-        for (size_t vi = 0; vi < valid_tet_indices.size(); ++vi) {
-            uint32_t t = valid_tet_indices[vi];
-            uint8_t case_idx = valid_tet_case[vi];
+        // --- THIRD PASS: assemble triangles to match PyTorch torch.cat order ---
+        mesh.t_pos_idx.reserve(valid_tet_indices.size() * 3); // rough heuristic
 
+        auto append_triangle = [&](uint32_t t, uint8_t case_idx, int start_edge) {
             const int* trirow = TRI_TABLE[case_idx];
+            bool tri_valid = true;
+            uint32_t tri_vids[3];
 
-            // For each triangle in row (up to 2 triangles, 3 entries each)
-            for (int tri_e = 0; tri_e < 6; tri_e += 3) {
-                if (trirow[tri_e] == -1) break;
+            for (int k = 0; k < 3; ++k) {
+                int edge_local = trirow[start_edge + k];
+                uint32_t a_global = static_cast<uint32_t>(indices_[t * 4 + EDGE_TO_LOCAL_VERTS[edge_local][0]]);
+                uint32_t b_global = static_cast<uint32_t>(indices_[t * 4 + EDGE_TO_LOCAL_VERTS[edge_local][1]]);
 
-                uint32_t tri_vids[3];
-                bool tri_valid = true;
-
-                for (int k = 0; k < 3; ++k) {
-                    int edge_local = trirow[tri_e + k];
-                    uint32_t a_local = EDGE_TO_LOCAL_VERTS[edge_local][0];
-                    uint32_t b_local = EDGE_TO_LOCAL_VERTS[edge_local][1];
-
-                    // global vertex indices for the tet
-                    uint32_t a_global = static_cast<uint32_t>( indices_[t*4 + a_local] );
-                    uint32_t b_global = static_cast<uint32_t>( indices_[t*4 + b_local] );
-
-                    uint64_t ekey = pack_edge_key(a_global, b_global);
-
-                    auto it = edgekey_to_idx.find(ekey);
-                    if (it == edgekey_to_idx.end()) {
-                        tri_valid = false;
-                        break;
-                    }
-                    uint32_t edge_idx = it->second;
-                    uint32_t vid = edge_vertex_id[edge_idx];
-                    if (vid == std::numeric_limits<uint32_t>::max()) {
-                        // edge did not cross surface (shouldn't happen if tri table consistent), skip triangle
-                        tri_valid = false;
-                        break;
-                    }
-                    tri_vids[k] = vid;
+                auto it = edgekey_to_idx.find(pack_edge_key(a_global, b_global));
+                if (it == edgekey_to_idx.end() || edge_vertex_id[it->second] == std::numeric_limits<uint32_t>::max()) {
+                    tri_valid = false; break;
                 }
+                tri_vids[k] = edge_vertex_id[it->second];
+            }
+            if (tri_valid) {
+                mesh.t_pos_idx.push_back(tri_vids[0]);
+                mesh.t_pos_idx.push_back(tri_vids[1]);
+                mesh.t_pos_idx.push_back(tri_vids[2]);
+            }
+        };
 
-                if (tri_valid) {
-                    // Append triangle indices (winding as per table)
-                    mesh.t_pos_idx.push_back(tri_vids[0]);
-                    mesh.t_pos_idx.push_back(tri_vids[1]);
-                    mesh.t_pos_idx.push_back(tri_vids[2]);
-                }
+        // 1st Loop: Append ALL 1-triangle cases (matches idx_map[num_triangles == 1])
+        for (size_t vi = 0; vi < valid_tet_indices.size(); ++vi) {
+            uint8_t case_idx = valid_tet_case[vi];
+            if (TRI_TABLE[case_idx][0] != -1 && TRI_TABLE[case_idx][3] == -1) {
+                append_triangle(valid_tet_indices[vi], case_idx, 0);
+            }
+        }
+
+        // 2nd Loop: Append ALL 2-triangle cases (matches idx_map[num_triangles == 2])
+        for (size_t vi = 0; vi < valid_tet_indices.size(); ++vi) {
+            uint8_t case_idx = valid_tet_case[vi];
+            if (TRI_TABLE[case_idx][3] != -1) {
+                append_triangle(valid_tet_indices[vi], case_idx, 0); // First triangle
+                append_triangle(valid_tet_indices[vi], case_idx, 3); // Second triangle
             }
         }
 

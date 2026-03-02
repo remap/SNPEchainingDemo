@@ -1605,7 +1605,18 @@ void compute_single_unfold_3x3_fast(
 //
 //}
 
-cv::Mat float32_to_uint8_cv(const cv::Mat &img_f32, bool dither=false, const cv::Mat &dither_mask = cv::Mat()) {
+// Helper to apply the sRGB gamma curve
+inline float apply_srgb_curve(float linear_val) {
+    // Clamp to [0, 1] first
+    float v = std::max(0.0f, std::min(1.0f, linear_val));
+    if (v <= 0.0031308f) {
+        return v * 12.92f;
+    } else {
+        return 1.055f * std::pow(v, 1.0f / 2.4f) - 0.055f;
+    }
+}
+
+inline cv::Mat float32_to_uint8_cvOld(const cv::Mat &img_f32, bool dither=false, const cv::Mat &dither_mask = cv::Mat()) {
     CV_Assert(img_f32.type() == CV_32FC3);
     cv::Mat out(img_f32.rows, img_f32.cols, CV_8UC3);
     if (!dither) {
@@ -1648,6 +1659,47 @@ cv::Mat float32_to_uint8_cv(const cv::Mat &img_f32, bool dither=false, const cv:
         }
         return out;
     }
+}
+
+inline cv::Mat float32_to_uint8_cv(const cv::Mat &img_f32, bool dither = false, const cv::Mat &dither_mask = cv::Mat(), bool to_srgb = false) {
+    CV_Assert(img_f32.type() == CV_32FC3);
+    cv::Mat out(img_f32.rows, img_f32.cols, CV_8UC3);
+
+    std::mt19937 rng((unsigned)std::random_device{}());
+    std::uniform_real_distribution<float> dist(-0.5f, 0.5f);
+
+    for (int r = 0; r < img_f32.rows; ++r) {
+        const cv::Vec3f* src = img_f32.ptr<cv::Vec3f>(r);
+        uchar* dst = out.ptr<uchar>(r);
+
+        for (int c = 0; c < img_f32.cols; ++c) {
+            float noise = 0.0f;
+            if (dither) {
+                noise = dist(rng);
+                if (!dither_mask.empty()) {
+                    float mask_val = dither_mask.at<float>(r, c); // Ensure mask is CV_32F
+                    if (mask_val < 0.5f) noise = 0.0f;
+                }
+            }
+
+            for (int ch = 0; ch < 3; ++ch) {
+                float v = src[c][ch];
+
+                // 1. Apply sRGB gamma correction ONLY for base color, never for normals
+                if (to_srgb) {
+                    v = apply_srgb_curve(v);
+                }
+
+                // 2. Multiply by 255.0 (not 256.0) and add noise
+                v = (v * 255.0f) + noise;
+
+                // 3. Round to nearest integer and clamp safely
+                int vi = static_cast<int>(std::round(v));
+                dst[c*3 + ch] = static_cast<uchar>(std::clamp(vi, 0, 255));
+            }
+        }
+    }
+    return out;
 }
 
 void normalize_rows_inplace(float* data, size_t N) {
@@ -1734,18 +1786,21 @@ cv::Mat dilate_fill_cv(
         auto end = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end - start;
         std::cout << "single_unfold img time: " << elapsed.count() << "s" << std::endl;
+        LOGI("single_unfold img time: %f s", elapsed.count());
 
         start = std::chrono::high_resolution_clock::now();
         compute_single_unfold_3x3_fast(old_mask_in_unfold, old_mask_unfold, N, true);
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
         std::cout << "single_unfold old_mask_in_unfold time: " << elapsed.count() << "s" << std::endl;
+        LOGI("single_unfold old_mask_in_unfold time: %f s", elapsed.count());
 
         start = std::chrono::high_resolution_clock::now();
         compute_single_unfold_3x3_fast(new_mask_in_unfold, new_mask_unfold, N, true);
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
         std::cout << "single_unfold new_mask_in_unfold time: " << elapsed.count() << "s" << std::endl;
+        LOGI("single_unfold new_mask_in_unfold time: %f s", elapsed.count());
 
         // 3. calculate mean color
         std::vector<float> mean_color(3 * N, 0.0f);
@@ -1771,6 +1826,7 @@ cv::Mat dilate_fill_cv(
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
         std::cout << "mean_color time: " << elapsed.count() << "s" << std::endl;
+        LOGI("mean_color time: %f s", elapsed.count());
 
         // 4. fill color
         std::vector<float> fill_color(C * P * N, 0.0f);
@@ -1788,6 +1844,7 @@ cv::Mat dilate_fill_cv(
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
         std::cout << "fill_color time: " << elapsed.count() << "s" << std::endl;
+        LOGI("fill_color time: %f s", elapsed.count());
 
         // 5. conv2d
         // assume newMask_cv is CV_8UC1 or CV_32F (values 0/1), size HxW
@@ -1814,11 +1871,13 @@ cv::Mat dilate_fill_cv(
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
         std::cout << "filter2D time: " << elapsed.count() << "s" << std::endl;
+        LOGI("filter2D time: %f s", elapsed.count());
 
         // 6. fold
         cv::Mat newImg_accum(H, W, CV_32FC3, cv::Scalar(0,0,0));
         start = std::chrono::high_resolution_clock::now();
         const int out_W = W - 2;
+        #pragma omp parallel for schedule(static)
         for (int l = 0; l < N; ++l) {
             int py = l / out_W;
             int px = l % out_W;
@@ -1836,6 +1895,7 @@ cv::Mat dilate_fill_cv(
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
         std::cout << "newImg_accum time: " << elapsed.count() << "s" << std::endl;
+        LOGI("newImg_accum time: %f s", elapsed.count());
 
         cv::Mat newImg(H, W, CV_32FC3, cv::Scalar(0,0,0));
         start = std::chrono::high_resolution_clock::now();
@@ -1853,6 +1913,7 @@ cv::Mat dilate_fill_cv(
         end = std::chrono::high_resolution_clock::now();
         elapsed = end - start;
         std::cout << "newImg time: " << elapsed.count() << "s" << std::endl;
+        LOGI("newImg time: %f s", elapsed.count());
 
         // 7. diff and lerp
         cv::Mat diffMask;
@@ -1883,6 +1944,7 @@ cv::Mat dilate_fill_cv(
             end = std::chrono::high_resolution_clock::now();
             elapsed = end - start;
             std::cout << "merge,substract,multiply,add time: " << elapsed.count() << "s" << std::endl;
+            LOGI("merge,substract,multiply,add time: %f s", elapsed.count());
 
         }
 
@@ -1890,8 +1952,77 @@ cv::Mat dilate_fill_cv(
 
     auto all_end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> all_elapsed = all_end - all_start;
-    std::cout << "ALL time: " << all_elapsed.count() << "s" << std::endl;
+    LOGI("ALL time for dilate_fill:  %f s",all_elapsed.count());
     return oldImg;
+}
+
+
+static void fast_texture_bleed(cv::Mat& img_in_out, cv::Mat& mask_in, int iterations) {
+    int H = img_in_out.rows;
+    int W = img_in_out.cols;
+
+    // We only need two alternating buffers, no massive tensor allocations
+    cv::Mat current_img = img_in_out.clone();
+    cv::Mat current_mask = mask_in.clone();
+    cv::Mat next_img = img_in_out.clone();
+    cv::Mat next_mask = mask_in.clone();
+
+    // 8-way neighbor offsets
+    int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+    int dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+
+    for (int iter = 0; iter < iterations; ++iter) {
+        bool changed = false;
+
+        for (int y = 0; y < H; ++y) {
+            // Using raw pointers for absolute maximum C++ speed
+            cv::Vec3f* next_img_row = next_img.ptr<cv::Vec3f>(y);
+            uint8_t* next_mask_row = next_mask.ptr<uint8_t>(y);
+            const uint8_t* curr_mask_row = current_mask.ptr<uint8_t>(y);
+
+            for (int x = 0; x < W; ++x) {
+                // If this pixel already has color from the mesh/previous iter, skip it
+                if (curr_mask_row[x] > 0) continue;
+
+                float r = 0, g = 0, b = 0;
+                int count = 0;
+
+                // Look at the 8 surrounding pixels
+                for (int i = 0; i < 8; ++i) {
+                    int nx = x + dx[i];
+                    int ny = y + dy[i];
+
+                    // Boundary check
+                    if (nx >= 0 && nx < W && ny >= 0 && ny < H) {
+                        // If the neighbor is colored, sample its color
+                        if (current_mask.at<uint8_t>(ny, nx) > 0) {
+                            cv::Vec3f c = current_img.at<cv::Vec3f>(ny, nx);
+                            r += c[0];
+                            g += c[1];
+                            b += c[2];
+                            count++;
+                        }
+                    }
+                }
+
+                // If we found colored neighbors, calculate the mean color and bleed it
+                if (count > 0) {
+                    next_img_row[x] = cv::Vec3f(r / count, g / count, b / count);
+                    next_mask_row[x] = 255; // Mark as filled for the next iteration
+                    changed = true;
+                }
+            }
+        }
+
+        if (!changed) break; // Optimization: Stop early if the bleeding is done
+
+        // Swap buffers for the next dilation wave
+        current_img = next_img.clone();
+        current_mask = next_mask.clone();
+    }
+
+    // Output the final bled texture
+    img_in_out = current_img;
 }
 
 BuildTexturesInspect BuildTextures_SaveImages(
@@ -1955,6 +2086,7 @@ BuildTexturesInspect BuildTextures_SaveImages(
     }
     size_t mask_count = mask_indices.size();
     inspect.mask_indices = mask_indices;
+    LOGI("mask count: %lu", mask_count);
 
     // Step 1: interpolate normals and tangents into flat buffers
     std::vector<float> nrm_flat(num_pixels * 3, 0.0f);
@@ -2059,10 +2191,28 @@ BuildTexturesInspect BuildTextures_SaveImages(
     int iterations = std::max(1, W / 150);
 //    cv::Mat f_albedo_bgr;
 //    cv::cvtColor(f_albedo, f_albedo_bgr, cv::COLOR_RGB2BGR);
-    cv::Mat f_albedo_filled = dilate_fill_cv(f_albedo, mask_u8, H, W, iterations);
+    LOGI("dilate_filling albedo...");
+    auto t_s = std::chrono::high_resolution_clock::now();
+//    cv::Mat f_albedo_filled = dilate_fill_cv(f_albedo, mask_u8, H, W, iterations);
+    // new way
+    fast_texture_bleed(f_albedo, mask_u8, iterations);
+    cv::Mat f_albedo_filled = f_albedo.clone();
+    auto t_e = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> sec = t_e - t_s;
+    LOGW("f_albedo_filled time: %f s", sec.count());
+
 //    cv::Mat f_albedo_filled;
 //    cv::cvtColor(f_albedo_filled_bgr, f_albedo_filled, cv::COLOR_BGR2RGB);
-    cv::Mat f_bump_filled = dilate_fill_cv(f_bump, mask_u8, H, W, iterations);
+    LOGI("dilate_filling bump...");
+    t_s = std::chrono::high_resolution_clock::now();
+//    cv::Mat f_bump_filled = dilate_fill_cv(f_bump, mask_u8, H, W, iterations);
+    // new method
+    fast_texture_bleed(f_bump, mask_u8, iterations);
+    cv::Mat f_bump_filled = f_bump.clone();
+    t_e = std::chrono::high_resolution_clock::now();
+    sec = t_e - t_s;
+    LOGW("f_bump_filled time: %f s", sec.count());
+
     // create the "bump_up" reference (same shape as f_bump_filled)
     cv::Mat bump_up(f_bump_filled.rows, f_bump_filled.cols, CV_32FC3, cv::Scalar(0.5f, 0.5f, 1.0f));
     // compute dither_mask: true where bump_np equals bump_up (per-channel)
@@ -2089,41 +2239,46 @@ BuildTexturesInspect BuildTextures_SaveImages(
 
 
     // Step 5: save images if requested
-    try {
-        cv::Mat basecolor_u8 = float32_to_uint8_cv(f_albedo_filled, false);
-//        cv::Mat bump_u8 = float32_to_uint8_cv(f_bump_filled, false);
-        cv::Mat bump_u8 = float32_to_uint8_cv(f_bump_filled, /*dither=*/true, dither_mask_float);
+    if (false) {
+        try {
+            cv::Mat basecolor_u8 = float32_to_uint8_cv(f_albedo_filled, false);
+            //        cv::Mat bump_u8 = float32_to_uint8_cv(f_bump_filled, false);
+            cv::Mat bump_u8 = float32_to_uint8_cv(f_bump_filled, /*dither=*/true,
+                                                  dither_mask_float);
 
-//        cv::Mat base_bgr, bump_bgr;
-//        cv::cvtColor(basecolor_u8, base_bgr, cv::COLOR_RGB2BGR);
-//        cv::cvtColor(bump_u8, bump_bgr, cv::COLOR_RGB2BGR);
+            //        cv::Mat base_bgr, bump_bgr;
+            //        cv::cvtColor(basecolor_u8, base_bgr, cv::COLOR_RGB2BGR);
+            //        cv::cvtColor(bump_u8, bump_bgr, cv::COLOR_RGB2BGR);
 
-        if (save_as_jpeg) {
-            std::vector<int> jparams = {cv::IMWRITE_JPEG_QUALITY, 95};
-            if (!cv::imwrite(basecolor_outpath, basecolor_u8, jparams)) {
-                LOGE("Failed to write %s", basecolor_outpath.c_str());
+            if (save_as_jpeg) {
+                std::vector<int> jparams = {cv::IMWRITE_JPEG_QUALITY, 95};
+                if (!cv::imwrite(basecolor_outpath, basecolor_u8, jparams)) {
+                    LOGE("Failed to write %s", basecolor_outpath.c_str());
+                }
+                if (!cv::imwrite(bump_outpath, bump_u8, jparams)) {
+                    LOGE("Failed to write %s", bump_outpath.c_str());
+                }
+            } else {
+                cv::imwrite(basecolor_outpath, basecolor_u8);
+                cv::imwrite(bump_outpath, bump_u8);
             }
-            if (!cv::imwrite(bump_outpath, bump_u8, jparams)) {
-                LOGE("Failed to write %s", bump_outpath.c_str());
-            }
-        } else {
-            cv::imwrite(basecolor_outpath, basecolor_u8);
-            cv::imwrite(bump_outpath, bump_u8);
+            std::vector<uchar> jpg_buf, bsc_buf;
+            std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 95};
+            cv::imencode(".jpg", bump_u8, jpg_buf, params); // jpg_buf contains bytes
+            std::string bump_jpg_bytes(reinterpret_cast<char *>(jpg_buf.data()), jpg_buf.size());
+            inspect.bump_jpeg_bytes.assign(reinterpret_cast<char *>(jpg_buf.data()),
+                                           jpg_buf.size());
+            //        inspect.bump_path = bump_outpath;
+
+            cv::imencode(".jpg", basecolor_u8, bsc_buf, params); // jpg_buf contains bytes
+            std::string bsc_jpg_bytes(reinterpret_cast<char *>(bsc_buf.data()), bsc_buf.size());
+            inspect.basecolor_jpeg_bytes.assign(reinterpret_cast<char *>(bsc_buf.data()),
+                                                bsc_buf.size());
+            //        inspect.basecolor_path = basecolor_outpath;
+
+        } catch (const std::exception &e) {
+            LOGE("Exception while saving images: %s", e.what());
         }
-        std::vector<uchar> jpg_buf, bsc_buf;
-        std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, 95 };
-        cv::imencode(".jpg", bump_u8, jpg_buf, params); // jpg_buf contains bytes
-        std::string bump_jpg_bytes(reinterpret_cast<char*>(jpg_buf.data()), jpg_buf.size());
-        inspect.bump_jpeg_bytes.assign(reinterpret_cast<char*>(jpg_buf.data()), jpg_buf.size());
-//        inspect.bump_path = bump_outpath;
-
-        cv::imencode(".jpg", basecolor_u8, bsc_buf, params); // jpg_buf contains bytes
-        std::string bsc_jpg_bytes(reinterpret_cast<char*>(bsc_buf.data()), bsc_buf.size());
-        inspect.basecolor_jpeg_bytes.assign(reinterpret_cast<char*>(bsc_buf.data()), bsc_buf.size());
-//        inspect.basecolor_path = basecolor_outpath;
-
-    } catch (const std::exception &e) {
-        LOGE("Exception while saving images: %s", e.what());
     }
 
     // Fill inspect basecolor and bump as float32 linear arrays (H*W*3)
@@ -2131,6 +2286,7 @@ BuildTexturesInspect BuildTextures_SaveImages(
     inspect.bump.resize(num_pixels * 3);
     inspect.bump_filled.resize(num_pixels * 3);
     inspect.albedo.resize(num_pixels * 3);
+#pragma omp parallel for //schedule(static)
     for (int y = 0; y < H; ++y) {
         const cv::Vec3f* rowA = f_albedo_filled.ptr<cv::Vec3f>(y);
         const cv::Vec3f* rowB = f_bump_filled.ptr<cv::Vec3f>(y);
@@ -2298,10 +2454,10 @@ static void invert_mesh_winding_and_normals(
         // f: indices [f, f+1, f+2] -> swap last two to change winding
         std::swap(t_pos_idx_flat[f + 1], t_pos_idx_flat[f + 2]);
     }
-//    if (v_nrm_flat_ptr && v_nrm_flat_ptr->size() % 3 == 0) {
-//        auto &n = *v_nrm_flat_ptr;
-//        for (size_t i = 0; i < n.size(); ++i) n[i] = -n[i]; // flip normals
-//    }
+    if (v_nrm_flat_ptr && v_nrm_flat_ptr->size() % 3 == 0) {
+        auto &n = *v_nrm_flat_ptr;
+        for (size_t i = 0; i < n.size(); ++i) n[i] = -n[i]; // flip normals
+    }
 }
 
 
@@ -2593,7 +2749,7 @@ bool ExportGLBFromInspectOld(
     PbrMetallicRoughness pbr;
     pbr.baseColorTexture.index = tex_basecolor_index;
     pbr.metallicFactor = inspect.metallic;
-    pbr.roughnessFactor = inspect.roughness;
+    pbr.roughnessFactor = 0.9f;//inspect.roughness;
 //    mat.values["pbrMetallicRoughness"] = ParameterValue(); // not required but keep structure
     mat.pbrMetallicRoughness = pbr;
     mat.doubleSided = true;
@@ -2696,7 +2852,7 @@ bool ExportGLBFromInspect(
                 row[x][2] = inspect.basecolor[idx + 2];
             }
         }
-        cv::Mat base_u8 = float32_to_uint8_cv(base_f, false);
+        cv::Mat base_u8 = float32_to_uint8_cv(base_f, false, cv::Mat(), true);
         cv::Mat base_bgr;
         cv::cvtColor(base_u8, base_bgr, cv::COLOR_RGB2BGR);
         std::vector<int> params = { cv::IMWRITE_JPEG_QUALITY, 95 };
@@ -2721,6 +2877,10 @@ bool ExportGLBFromInspect(
                 row[x][2] = inspect.bump_filled[idx + 2];
             }
         }
+        double minEl, maxEl;
+        cv::minMaxLoc(norm_f, &minEl, &maxEl, nullptr, nullptr);
+        LOGW("NORM F min: %f, max: %f", minEl, maxEl);
+
         cv::Mat bump_up(norm_f.rows, norm_f.cols, CV_32FC3, cv::Scalar(0.5f, 0.5f, 1.0f));
         // compute dither_mask: true where bump_np equals bump_up (per-channel)
         LOGI("[Export:] computing dither mask...");
@@ -2742,7 +2902,10 @@ bool ExportGLBFromInspect(
         }
         // convert equal_mask to float dither_mask expected by float32_to_uint8_cv
         cv::Mat dither_mask_float;
-        equal_mask.convertTo(dither_mask_float, CV_32F, 1.0/*/255.0*/); // if equal_mask is 0/255
+        double min_val, max_val;
+        cv::minMaxLoc(equal_mask, &min_val, &max_val, nullptr, nullptr);
+        LOGW("MASK MIN: %f, MAX: %f", min_val, max_val);
+        equal_mask.convertTo(dither_mask_float, CV_32F, 1.0/255.0); // if equal_mask is 0/255
         // dithered normal? If you had an already dithered bump_u8, use that.
         cv::Mat bump_u8 = float32_to_uint8_cv(norm_f, true /*dither*/, dither_mask_float);//equal_mask);
         cv::Mat bump_bgr; cv::cvtColor(bump_u8, bump_bgr, cv::COLOR_RGB2BGR);
@@ -2786,7 +2949,7 @@ bool ExportGLBFromInspect(
 //    apply_4x4_transform_to_positions_and_normals(vpos, vnormal, transform_mat.data());
     apply_4x4_transform_to_positions_and_normals(vpos, vnormal, vtng, transform_mat.data());
     LOGI("[Export:] invert mesh winding");
-    invert_mesh_winding_and_normals(const_cast<std::vector<int>&>(tidx), &vnormal);
+//    invert_mesh_winding_and_normals(const_cast<std::vector<int>&>(tidx), &vnormal);
 
     // Build binary buffer
     std::vector<unsigned char> bin; bin.reserve(1 << 20);
@@ -3009,6 +3172,10 @@ bool ExportGLBFromInspect(
     normalInfo.index = tex_bump_index; //tex_normal_index;
     mat.normalTexture = normalInfo;
     mat.doubleSided = true;
+
+//    mat.extensions["KHR_materials_unlit"] = tinygltf::Value(tinygltf::Value::Object());
+//    model.extensionsUsed.push_back("KHR_materials_unlit");
+
     model.materials.push_back(mat);
     int material_index = static_cast<int>(model.materials.size()-1);
 

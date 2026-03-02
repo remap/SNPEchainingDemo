@@ -147,7 +147,8 @@ void MeshCPP::compute_vertex_tangent_impl() {
         );
 
         float denom = duv1x * duv2y - duv1y * duv2x;
-        float denom_safe = (std::fabs(denom) < 1e-6f) ? (denom < 0 ? -1e-6f : 1e-6f) : denom;
+//        float denom_safe = (std::fabs(denom) < 1e-6f) ? (denom < 0 ? -1e-6f : 1e-6f) : denom; // this seems to make more sense but not the original python implementation
+        float denom_safe = std::max(denom, 1e-6f); // this is the original python implementation
         Vec3 tang = tng_nom * (1.0f / denom_safe);
 
         // add to all three vertices
@@ -255,6 +256,14 @@ void MeshCPP::unwrap_uv(float island_padding) {
         LOGE("[Mesh_CPP] uw.forward returned empty result; aborting unwrap_uv");
         return;
     }
+    LOGW("[MESH_CPP:] UV: %lu, INDICES: %lu", result.num_unique_uv(), result.num_faces());
+    {
+        std::string inds_log = "";
+        for (size_t k = 0; k < 10; ++k) inds_log += std::to_string(result.vtex_idx[k]) + ", ";
+        LOGW("[MESH_CPP:] indices: %s", inds_log.c_str());
+//        std::minmax_element(result.vtex_idx.begin(), result.vtex_idx.end());
+        LOGW("max indices: %s", std::to_string(std::max_element( result.vtex_idx.begin(), result.vtex_idx.end())[0]).c_str());
+    }
     // result.unique_uv : flattened [u0,v0, u1,v1, ...]
     // result.vtex_idx : flattened Nf*3 indices into unique_uv
 
@@ -276,6 +285,7 @@ void MeshCPP::unwrap_uv(float island_padding) {
     for (size_t fi = 0; fi < Nf; ++fi) {
         for (int corner = 0; corner < 3; ++corner) {
             int vid = t_pos_idx_[fi*3 + corner];
+//            int vid = result.vtex_idx[fi*3 + corner];
             // copy pos
             new_vpos.push_back(v_pos_[vid*3 + 0]);
             new_vpos.push_back(v_pos_[vid*3 + 1]);
@@ -292,6 +302,7 @@ void MeshCPP::unwrap_uv(float island_padding) {
             if (uv_idx < 0 || static_cast<size_t>(uv_idx) >= uniq_uv_count) {
                 // fallback 0,0
                 std::cerr << "FALLBACK UV IDX " << uv_idx << " (should be 0-" << uniq_uv_count-1 << ")\n";
+                LOGE("FALLBACK UV IDX %lu (should be 0-%lu)", uv_idx, uniq_uv_count-1);
                 new_vtex.push_back(0.0f); new_vtex.push_back(0.0f);
             } else {
                 float u = result.unique_uv[uv_idx*2 + 0];
@@ -304,6 +315,14 @@ void MeshCPP::unwrap_uv(float island_padding) {
                 new_vtex.push_back(v);
             }
         }
+    }
+
+    {
+        LOGW("[MESH_CPP:] NEW_V_POS: %lu", new_vpos.size()/3);
+        std::string new_faces_log = "";
+        for (size_t k = 0; k < 10; ++k) new_faces_log += std::to_string(new_faces[k]) + ", ";
+        LOGW("new t_pos_idx: %s", new_faces_log.c_str());
+        LOGW("max: %s", std::to_string(std::max_element(new_faces.begin(), new_faces.end())[0]).c_str());
     }
 
     // Replace internal arrays with duplicated mesh

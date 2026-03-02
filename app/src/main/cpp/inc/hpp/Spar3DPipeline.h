@@ -90,12 +90,15 @@ public:
 
     std::vector<float> preprocessImage(uint8_t* pixelData, int width, int height, const int tgt_size=512, const bool _01=false, const bool HWC=false);
     void preprocessImage(uint8_t* pixelData, int width, int height, float* output_buffer, const size_t output_elements, const int tgt_size=512, const bool _01=true, const bool HWC=true);
+    void preprocessImageNew(uint8_t* pixelData, int width, int height, float* output_buffer, const size_t output_elements, const int tgt_size=512, const bool _01=true, const bool HWC=true);
 
     void overall_pipeline(uint8_t* img_array, int ori_width, int ori_height, const std::string& glb_output_path);
 
     void test_spill(uint8_t* img, int ori_width, int ori_height);
     void test_imest(uint8_t* img, int ori_width, int ori_height);
 //    void test_sc2(uint8_t* img, int ori_width, int ori_height, const std::string& glb_output_path);
+    void test_export(const std::string& glb_output_path);
+    void test_chunkedDecoder(const std::string& glb_output_path);
 
 //protected:
 //    float softplus(float x) {

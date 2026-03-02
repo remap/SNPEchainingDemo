@@ -28,9 +28,9 @@
 
 
 // Build a RuntimeList from a single preference char (D/G/C).
-static zdl::DlSystem::RuntimeList makeRuntimeOrder(char pref) {
-    using zdl::DlSystem::Runtime_t;
-    zdl::DlSystem::RuntimeList lst;
+static DlSystem::RuntimeList makeRuntimeOrder(char pref) {
+    using DlSystem::Runtime_t;
+    DlSystem::RuntimeList lst;
     if      (pref == 'D') lst.add(Runtime_t::DSP);
     else if (pref == 'G') lst.add(Runtime_t::GPU);
     else                  lst.add(Runtime_t::CPU);

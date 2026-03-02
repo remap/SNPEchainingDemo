@@ -449,6 +449,7 @@ void Unwrapper::box_assign_vertex_to_cube_face(
         // avoid divide by zero
         float max_dim_div = max_axis;
         if (max_dim_div == 0.0f) max_dim_div = 1.0f;
+        max_dim_div = 1.0f; // the way max_dim_div in original python was computed is just nonsensical and only works because it ends up being 1
 
         // uc from [-1,1] to [0,1]: ((uc / max_dim_div + 1) * 0.5)
         float u0 = clampf((uc0 / max_dim_div + 1.0f) * 0.5f, 0.0f, 1.0f);
@@ -696,19 +697,22 @@ void Unwrapper::handle_slice_uvs(
             if (vc[vi] < min_v) min_v = vc[vi];
             if (vc[vi] > max_v) max_v = vc[vi];
         }
-        float range_u = max_u - min_u; if (range_u < 1e-6f) range_u = 1e-6f;
-        float range_v = max_v - min_v; if (range_v < 1e-6f) range_v = 1e-6f;
+//        float range_u = max_u - min_u; if (range_u < 1e-6f) range_u = 1e-6f;
+//        float range_v = max_v - min_v; if (range_v < 1e-6f) range_v = 1e-6f;
+        // Clip the denominator to 0.5 to match PyTorch's .clip(0.5)
+        float range_u = std::max(max_u - min_u, 0.5f);
+        float range_v = std::max(max_v - min_v, 0.5f);
 
         for (int vi : vidx) {
             float nu = (uc[vi] - min_u) / range_u;
-            if (nu < 0.5f) nu = nu; // clip below
-            if (nu > 1.0f) nu = 1.0f;
+//            if (nu < 0.5f) nu = nu; // clip below
+//            if (nu > 1.0f) nu = 1.0f;
             float nv = (vc[vi] - min_v) / range_v;
-            if (nv < 0.5f) nv = nv;
-            if (nv > 1.0f) nv = 1.0f;
-            // safety clip to 0.5..1.0 to match clip(0.5) semantics approximation
-            if (nu < 0.5f) nu = 0.5f;
-            if (nv < 0.5f) nv = 0.5f;
+//            if (nv < 0.5f) nv = nv;
+//            if (nv > 1.0f) nv = 1.0f;
+//            // safety clip to 0.5..1.0 to match clip(0.5) semantics approximation
+//            if (nu < 0.5f) nu = 0.5f;
+//            if (nv < 0.5f) nv = 0.5f;
             uc[vi] = nu;
             vc[vi] = nv;
         }

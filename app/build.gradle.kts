@@ -78,6 +78,8 @@ android {
     androidResources {
         // keep DLC entries stored (STORED), not DEFLATED, so we can mmap them
         noCompress += listOf("dlc")
+        noCompress += listOf("tflite")
+        noCompress += listOf("onnx")
     }
 
 }
@@ -106,6 +108,8 @@ dependencies {
     implementation("com.google.android.gms:play-services-tflite-java:16.1.0") // Often needed for the underlying runtime
     // Google ML Kit for Subject Segmentation (Background Removal)
     implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
+    implementation("com.google.mediapipe:tasks-vision:0.10.14")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.1")
     // Core Android KTX for bitmap handling
     implementation("androidx.core:core-ktx:1.12.0")
 
