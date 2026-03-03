@@ -1601,8 +1601,8 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     const auto& scene_codes_tinfo = ws_.tinfoOf(scene_codes_wsName);
     auto* scene_codes = static_cast<float*>(ws_.data(scene_codes_wsName));
     {
-        std::string scene_codes_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_scene_codes_dump.bin";
-        dump_tensor_to_file(scene_codes_dump_path.c_str(), scene_codes, scene_codes_tinfo->numel());
+//        std::string scene_codes_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_scene_codes_dump.bin";
+//        dump_tensor_to_file(scene_codes_dump_path.c_str(), scene_codes, scene_codes_tinfo->numel());
 //        if (!readFileToBuffer(scene_codes_dump_path, scene_codes, scene_codes_tinfo->bytes())) LOGE("COULD NOT READ SCENE_CODES FROM FILE!");
         // some logging
         std::string scene_codes_log = "scene codes dims: ";
@@ -1640,7 +1640,7 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
                              inf_config_.radius);
     logNumbers(values, *values_tinfo, values_wsName, 8, 'i',"Values: ");
     {
-        for (size_t i; i < values_tinfo->numel(); ++i) {
+        for (size_t i = 0; i < values_tinfo->numel(); ++i) {
             if (std::isnan(values[i])) {
                 LOGE("[Pipeline:] VALUES has NANs!");
                 break;
@@ -1705,8 +1705,8 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     std::chrono::duration<double> elapsed = exp_end - exp_start;
     LOGW("exp of sdf runtime: %f s", elapsed.count());
 
-    std::string sdf_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_sdf_dump.bin";
-    dump_tensor_to_file(sdf_dump_path.c_str(), sdf, sdf_tinfo->numel());
+//    std::string sdf_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_sdf_dump.bin";
+//    dump_tensor_to_file(sdf_dump_path.c_str(), sdf, sdf_tinfo->numel());
 //    LOGW("SDF at various indeces: %f, %f, %f, %f, %f, %f", sdf[127129],
 //                                                                sdf[127455],
 //                                                                sdf[127458],
@@ -1730,7 +1730,7 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     auto* deformation = static_cast<float*>(ws_.data(deformation_wsName));
     const auto& deformation_tinfo = ws_.tinfoOf(deformation_wsName);
     std::string deformation_dump_path = "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/gorilla_deformation_dump.bin";
-    dump_tensor_to_file(deformation_dump_path.c_str(), deformation, deformation_tinfo->numel());
+//    dump_tensor_to_file(deformation_dump_path.c_str(), deformation, deformation_tinfo->numel());
 
     {
         bool sdf_nan = false;

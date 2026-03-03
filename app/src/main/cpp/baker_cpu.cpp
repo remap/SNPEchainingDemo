@@ -2749,7 +2749,7 @@ bool ExportGLBFromInspectOld(
     PbrMetallicRoughness pbr;
     pbr.baseColorTexture.index = tex_basecolor_index;
     pbr.metallicFactor = inspect.metallic;
-    pbr.roughnessFactor = 0.9f;//inspect.roughness;
+    pbr.roughnessFactor = inspect.roughness;
 //    mat.values["pbrMetallicRoughness"] = ParameterValue(); // not required but keep structure
     mat.pbrMetallicRoughness = pbr;
     mat.doubleSided = true;
