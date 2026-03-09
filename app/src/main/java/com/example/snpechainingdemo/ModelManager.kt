@@ -75,7 +75,7 @@ class ModelManager(private val context: Context) {
 
     private val targetRepos = listOf(
         GenAiRepo("spar3d", "uclaremap/3D_gen", "spar3d/dlc"),
-        GenAiRepo("spar3d", "uclaremap/SDLX_8", "dlc")
+        GenAiRepo("SDXL", "uclaremap/SDLX_8", "dlc")
     )
 
     suspend fun syncAndGetPaths(onProgress: ProgressListener): Map<String, String>? {
@@ -115,17 +115,20 @@ class ModelManager(private val context: Context) {
 
                         // Check every model in the LOCAL manifest
                         for (model in localManifest.required_models) {
-                            val file = File(modelDir, model.file)
+//                            val filename = model.file
+                            val remotePath = model.file
+                            val filename = remotePath.substringAfterLast('/')
+                            val file = File(modelDir, filename)//model.file)
                             // We use the cached hash from Prefs to avoid re-computing SHA-256 on every launch
                             // But we MUST check file.exists()
-                            val cachedHash = prefs.getString("hash_${model.file}", "") ?: ""
+                            val cachedHash = prefs.getString("hash_${filename}", "") ?: ""
                             if (file.exists() && cachedHash.isNotEmpty()) {
 //                                fastPathMap[model.file] = file.absolutePath
-                                repoFastPathMap[model.file] = file.absolutePath
+                                repoFastPathMap[filename] = file.absolutePath
                             } else {
                                 Log.w(
                                     "ModelSync",
-                                    "Fast Path failed for ${repo.id}: ${model.file} missing or unverified."
+                                    "Fast Path failed for ${repo.id}: ${filename} missing or unverified."
                                 )
                                 allLocallyValid = false
                                 break // Stop checking, we need a full sync
