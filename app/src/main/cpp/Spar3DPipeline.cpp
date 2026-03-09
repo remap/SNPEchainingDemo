@@ -1456,7 +1456,13 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
     const auto& timestep_tinfo = ws_.tinfoOf(timestep_wsName);
     auto* timestep = static_cast<int32_t*>(ws_.data(timestep_wsName));
 
-    const auto denoising_loop_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at("output_0");
+    std::string net_sample_name = "output_0";
+    std::string net_xstart_name = "output_1";
+    if (false) {
+        net_sample_name = "sample";
+        net_xstart_name = "pred_xstart";
+    }
+    const auto denoising_loop_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at(net_sample_name);//");sample
     LOGI("[Pipeline:] Found tensor workspace for denoising loop sample: WS name: %s", denoising_loop_sample_wsName.c_str());
     auto* denoising_loop_sample = static_cast<float*>(ws_.data(denoising_loop_sample_wsName));
 
@@ -1473,7 +1479,7 @@ void Spar3DPipeline::overall_pipeline(uint8_t* img, int ori_width, int ori_heigh
 //        break; // TODO: remove this
     }
     // get sample
-    const auto denoised_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at("output_1");
+    const auto denoised_sample_wsName = gr_runners_.one_step_denoiser->last().outputBinding.at(net_xstart_name);//"); pred_xstart
     LOGI("[Pipeline:] Found tensor workspace for denoiser sample: WS name: %s", denoised_sample_wsName.c_str());
 //    gr_runners_.one_step_denoiser->last().session.get()->reset(); // free up memory
     auto* denoised_sample = static_cast<float*>(ws_.data(denoised_sample_wsName));

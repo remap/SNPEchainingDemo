@@ -1,0 +1,235 @@
+{
+  "baseDir": "/sdcard/Android/data/com.example.snpechainingdemo/files/spar3d/dlc/",
+  "pipelines": [
+    {
+      "name": "preparer",
+      "models": [
+        {
+          "name": "img_preparer",
+          "asset": "spar_preparer_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "image_array": "image_array"
+          },
+          "outputs": {
+            "output_0": "rgb_cond",
+            "output_1": "mask_cond",
+            "output_2": "c2w_cond",
+            "output_3": "intrinsic_cond",
+            "output_4": "intrinsic_normed_cond"
+          }
+        }
+      ]
+    },
+    {
+      "name": "tester_allvision",
+      "models": [
+        {
+          "name": "tester_allvision",
+          "asset": "simplified_tester_allvision_fp32_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "cond_image": "allvision_tester_tensor"
+          },
+          "outputs": {
+            "output_0": "allvision_tester_out"
+          }
+        }
+      ]
+    },
+    {
+      "name": "pdiff_cond",
+      "models": [
+        {
+          "name": "pdiff_cond",
+          "asset": "spar_pdiff_cond_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "rgb_cond.1": "rgb_cond",
+            "mask_cond.1": "mask_cond",
+            "c2w_cond.1": "c2w_cond",
+            "intrinsic_cond.1": "intrinsic_cond",
+            "intrinsic_normed_cond.1": "intrinsic_normed_cond"
+          },
+          "outputs": {
+            "output_0": "input_image_tokens",
+            "output_1": "rgb_cond_unsq",
+            "output_2": "mask_cond_unsq",
+            "output_3": "c2w_cond_unsq",
+            "output_4": "intrinsic_cond_unsq",
+            "output_5": "intrinsic_normed_cond_unsq"
+          }
+        }
+      ]
+    },
+    {
+      "name": "one_step_denoiser",
+      "models": [
+        {
+          "name": "one_step_denoiser",
+          "asset": "spar_one_step_denoiser_0307_int16_padded_chunked_aimetOnnx_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "t": "timestep",
+            "noise": "noise",
+            "condition": "condition"
+          },
+          "inputEncodings": {
+            "t": "int32"
+          },
+          "outputs": {
+            "sample": "sample",
+            "pred_xstart": "pred_xstart"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scene_codes1",
+      "models": [
+        {
+          "name": "scene_codes1",
+          "asset": "spar_scene_codes1_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "rgb_cond": "rgb_cond_unsq",
+            "c2w_cond": "c2w_cond_unsq",
+            "intrinsic_normed_cond": "intrinsic_normed_cond_unsq",
+            "pc_cond": "pc_cond"
+          },
+          "outputs": {
+            "output_0": "scene_codes1_out0",
+            "output_1": "scene_codes1_out1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scene_codes2",
+      "models": [
+        {
+          "name": "scene_codes2_0",
+          "asset": "simplified_sc2b_0_chunkedAttAddinFuse_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "cross_tokens": "cross_tokens",
+            "init_latents": "init_latents",
+            "triplane_tokens.1": "triplane_tokens",
+            "latent_mask": "latent_mask",
+            "cross_mask": "cross_mask"
+          },
+          "outputs": {
+            "output_0": "latent_tokens_0",
+            "output_1": "triplane_tokens_0"
+          }
+        },
+        {
+          "name": "scene_codes2_1",
+          "asset": "simplified_sc2b_1_chunkedAttAddinFuse_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "cross_tokens": "cross_tokens",
+            "latent_mask": "latent_mask",
+            "cross_mask": "cross_mask",
+            "triplane_tokens.1": "triplane_tokens_0",
+            "latent_tokens.1": "latent_tokens_0"
+          },
+          "outputs": {
+            "output_0": "latent_tokens_1",
+            "output_1": "triplane_tokens_1"
+          }
+        },
+        {
+          "name": "scene_codes2_2",
+          "asset": "simplified_sc2b_2_chunkedAttAddinFuse_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "cross_tokens": "cross_tokens",
+            "latent_mask": "latent_mask",
+            "cross_mask": "cross_mask",
+            "triplane_tokens.1": "triplane_tokens_1",
+            "latent_tokens.1": "latent_tokens_1"
+          },
+          "outputs": {
+            "output_0": "latent_tokens_2",
+            "output_1": "triplane_tokens_2"
+          }
+        }
+      ]
+    },
+    {
+      "name": "scene_codes2_3",
+      "models": [
+        {
+          "name": "scene_codes2_3",
+          "asset": "simplified_sc2b_3_chunkedAttAddinFuse_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "cross_tokens": "cross_tokens",
+            "tokens": "tokens",
+            "triplane_tokens": "triplane_tokens_3",
+            "latent_tokens": "latent_tokens_3",
+            "latent_mask": "latent_mask",
+            "cross_mask": "cross_mask"
+          },
+          "outputs": {
+            "output_0": "scene_codes"
+          }
+        }
+      ]
+    },
+    {
+      "name": "triplanesToProtoMesh",
+      "models": [
+        {
+          "name": "triplanesToProtoMesh",
+          "asset": "spar_TriplanesToSDFdeformNoExp_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "values": "values"
+          },
+          "outputs": {
+            "output_0": "sdf",
+            "output_1": "deform"
+          }
+        }
+      ]
+    },
+    {
+      "name": "padded_decoder",
+      "models": [
+        {
+          "name": "padded_decoder",
+          "asset": "spar_decoder_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "padded_tri_query": "padded_tri_query"
+          },
+          "outputs": {
+            "output_0": "padded_features",
+            "output_1": "padded_perturb_normal"
+          }
+        }
+      ]
+    },
+    {
+      "name": "image_estimator",
+      "models": [
+        {
+          "name": "image_estimator",
+          "asset": "simplified_my_image_estimator_padded_noDistribution_fp32_qairtV237_8Elite_prepared.dlc",
+          "runtime": "D",
+          "inputs": {
+            "rgb_mask_image": "rgb_mask_image"
+          },
+          "outputs": {
+            "output_0": "roughness_0",
+            "output_1": "roughness_1",
+            "output_2": "metallic_0",
+            "output_3": "metallic_1"
+          }
+        }
+      ]
+    }
+  ]
+}

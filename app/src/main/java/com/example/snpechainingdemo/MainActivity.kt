@@ -224,17 +224,17 @@ class MainActivity : AppCompatActivity() {
 
                     // 3. Configure SNPEHelper with the verified path
                     // Note: We use the directory from the verified paths to ensure consistency
-                    val firstPath = modelPaths.values.first()
-                    val verifiedDir = java.io.File(firstPath).parentFile?.absolutePath
-//
-                    if (verifiedDir != null) {
-//                        SNPEHelper.setModelDirectory(verifiedDir)
-//                        android.util.Log.i("SNPE", "SNPE Directory updated to: $verifiedDir")
-                        txtLog.text = "Models Verified.\nEngine Ready."
-                    }
+//                    val firstPath = modelPaths.values.first()
+//                    val verifiedDir = java.io.File(firstPath).parentFile?.absolutePath
+////
+//                    if (verifiedDir != null) {
+////                        SNPEHelper.setModelDirectory(verifiedDir)
+////                        android.util.Log.i("SNPE", "SNPE Directory updated to: $verifiedDir")
+//                        txtLog.text = "Models Verified.\nEngine Ready."
+//                    }
 
                     // 4. Unlock the App
-                    txtLog.text = "Ready."
+                    txtLog.text = "Models Verified.\nEngine Ready."
                     setAppInterfaceEnabled(true)
                 } else {
                     // Failure (Network issue or Manifest mismatch)
@@ -297,7 +297,7 @@ class MainActivity : AppCompatActivity() {
         checkAndDownloadModel()
 
         // This will lock the UI, check hashes, download if needed, and THEN enable buttons.
-//        startStrictModelSync()
+        startStrictModelSync()
 
         btn_runTokenizers.setOnClickListener {
             android.util.Log.i("Tokenizer", "Running tokenizers...")

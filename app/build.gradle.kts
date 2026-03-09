@@ -28,7 +28,8 @@ android {
 
         // Inject secrets into a generated BuildConfig class
         buildConfigField("String", "HF_TOKEN", "\"${localProperties.getProperty("HF_READ_TOKEN")}\"")
-        buildConfigField("String", "HF_REPO", "\"uclaremap/pose_estimation\"")
+//        buildConfigField("String", "HF_REPO", "\"uclaremap/pose_estimation\"")
+//        buildConfigField("String", "HF_REPO", "\"uclaremap/3D_gen\"")
     }
 
     packagingOptions {

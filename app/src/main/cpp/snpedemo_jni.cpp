@@ -444,6 +444,7 @@ static jfloatArray n_runSPAR3D(JNIEnv* env, jclass, jobject assetManager,
                                jobject callback) {
 //    std::string config_filename = "SparEliteConfig.json";
     std::string config_filename = "SparEliteNewSC2Config.json";
+//    std::string config_filename = "SparQuantConfig.json";
     std::string log;
     bool reset_sessions = false; // forget network graphs to free memory -- useful when multiple models are loaded
     AAssetManager* mgr = AAssetManager_fromJava(env, assetManager);
