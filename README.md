@@ -1,3 +1,3 @@
 ## Documentation
 
-- [Project Report] (Edge_deployment_documentation-4.pdf)
+- [Project Report] (docs/Edge_deployment_documentation.pdf)
