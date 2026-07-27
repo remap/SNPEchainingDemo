@@ -1,1 +1,3 @@
-See Project Report (docs/Edge_deployment_documentation.pdf)
+## Documentation
+
+- [Project Report] (docs/Edge_deployment_documentation.pdf)
